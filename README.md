@@ -234,6 +234,10 @@ sudo rmmod <conflicting_module>
 sudo modprobe 8852au
 ```
 
+**Wrong adapter detected? Check chip ID**
+
+Not all TP-Link adapters use RTL8852AU. For example, the Archer T3U Plus (`2357:0138`) uses RTL8812BU and needs a different driver. Run `lsusb` to check your USB ID against the supported devices table above.
+
 **Secure Boot blocks unsigned module**
 
 Either disable Secure Boot in BIOS/UEFI, or sign the module:
@@ -242,6 +246,34 @@ make -j$(nproc)
 sudo make sign-install
 ```
 You'll be prompted for a MOK password — remember it for the enrollment screen on next reboot.
+
+---
+
+## Test Suite
+
+A comprehensive test suite verifies driver functionality:
+
+```bash
+sudo python3 tests/test_driver.py
+```
+
+Tests cover: module loading, device binding, interface creation, WiFi scanning, cfg80211 API, USB endpoints, kernel log cleanliness, module reload stability, and rapid interface toggling. Results are saved to `tests/test_report.json`.
+
+---
+
+## WiFi Dashboard
+
+A web-based dashboard for monitoring and configuring the adapter:
+
+```bash
+sudo python3 dashboard/app.py --port 8080
+```
+
+Open `http://localhost:8080` in your browser. Features:
+- Real-time adapter status and statistics
+- WiFi network scanning and connection management
+- Interface configuration (MTU, TX power, power save)
+- Integrated test suite runner
 
 ---
 
