@@ -598,12 +598,45 @@ static void rtw_ethtool_get_stats(struct net_device *dev,
 	}
 }
 
+static int rtw_ethtool_get_link_ksettings(struct net_device *dev,
+					  struct ethtool_link_ksettings *cmd)
+{
+	_adapter *padapter = (_adapter *)rtw_netdev_priv(dev);
+	u16 max_rate; /* in 100 Kbps */
+	u32 speed;
+
+	ethtool_link_ksettings_zero_link_mode(cmd, supported);
+	ethtool_link_ksettings_zero_link_mode(cmd, advertising);
+
+	cmd->base.port = PORT_OTHER;
+	cmd->base.duplex = DUPLEX_FULL;
+	cmd->base.autoneg = AUTONEG_DISABLE;
+
+	if (!padapter || !rtw_is_adapter_up(padapter)) {
+		cmd->base.speed = SPEED_UNKNOWN;
+		return 0;
+	}
+
+	max_rate = rtw_get_cur_max_rate(padapter);
+	if (max_rate == 0) {
+		cmd->base.speed = SPEED_UNKNOWN;
+		return 0;
+	}
+
+	/* max_rate is in 100 Kbps, convert to Mbps for ethtool */
+	speed = max_rate / 10;
+	cmd->base.speed = speed;
+
+	return 0;
+}
+
 static const struct ethtool_ops rtw_ethtool_ops = {
 	.get_drvinfo = rtw_ethtool_get_drvinfo,
 	.get_link = ethtool_op_get_link,
 	.get_strings = rtw_ethtool_get_strings,
 	.get_ethtool_stats = rtw_ethtool_get_stats,
 	.get_sset_count = rtw_ethtool_get_sset_count,
+	.get_link_ksettings = rtw_ethtool_get_link_ksettings,
 };
 #endif // LINUX_VERSION_CODE >= 3.7.8
 #endif /* CONFIG_IOCTL_CFG80211 */
