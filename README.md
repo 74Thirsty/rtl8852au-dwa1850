@@ -10,7 +10,7 @@
 
 <p align="center">
   <strong>Kernel 6.18+ patched &mdash; WiFi 6 USB driver that actually compiles on modern Linux.</strong><br>
-  Out-of-tree driver for Realtek RTL8852AU / RTL8832AU chipsets with 9 targeted kernel compatibility patches.
+  Out-of-tree driver for Realtek RTL8852AU / RTL8832AU chipsets with 10 targeted kernel compatibility patches.
 </p>
 
 ---
@@ -21,7 +21,7 @@ The original [lwfinger/rtl8852au](https://github.com/lwfinger/rtl8852au) driver 
 
 Even after resolving compilation errors, kernel 6.18 introduced **`-fstrict-flex-arrays=3`** and **`-fsanitize=bounds-strict`** which exposed latent bugs in the original driver: UBSAN array-out-of-bounds errors on every WPA key operation, and a NULL pointer dereference in the monitor mode receive path that could trigger a kernel panic.
 
-No upstream fix exists. This fork applies **9 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation and functionality on kernel 6.18+ without altering driver behavior.
+No upstream fix exists. This fork applies **10 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation and functionality on kernel 6.18+ without altering driver behavior.
 
 ---
 
@@ -50,6 +50,12 @@ No upstream fix exists. This fork applies **9 targeted patches** developed by [W
 |---|-------|-------|---------|
 | 8 | **UBSAN array-out-of-bounds** | `include/ieee80211.h` | Kernel 6.18 compiles with `-fstrict-flex-arrays=3`, which no longer treats `u8 field[0]` (GNU zero-length arrays) as flexible array members. This caused UBSAN to flag every WPA/WPA2 key operation as an out-of-bounds access (`param->u.crypt.key[16]`, `key[24]`) — the TKIP MIC key offsets inside the crypt struct. Fixed by converting all zero-length arrays (`u8 key[0]`, `u8 data[0]`, `u8 buf[0]`) to proper C99 flexible array members (`u8 key[]`). |
 | 9 | **NULL pointer dereference in monitor mode** | `core/rtw_recv.c` | `recv_frame_monitor()` dereferenced `rframe->u.hdr.pkt` (the skb pointer) without a NULL check. When a frame arrived via an error path in `rtw_core_update_recvframe()` (e.g. allocation failure), the NULL skb triggered a kernel panic. Added a NULL guard before the dereference. |
+
+### Ethtool fix
+
+| # | Patch | Files | Details |
+|---|-------|-------|---------|
+| 10 | **ethtool Speed: unknown** | `os_dep/linux/os_intfs.c` | The driver did not implement `get_link_ksettings`, causing `ethtool wlanX` to report `Speed: unknown`. Added `rtw_ethtool_get_link_ksettings()` which queries the current TX bitrate via `rtw_get_cur_max_rate()` and reports it correctly (e.g. `Speed: 1201Mb/s` for WiFi 6 AX on 80 MHz). |
 
 **Bonus:** Removed in-function `MODULE_IMPORT_NS(VFS_internal...)` calls that became invalid when the macro changed to a file-scope static declaration.
 
