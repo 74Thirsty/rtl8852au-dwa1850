@@ -3706,6 +3706,8 @@ static int recv_frame_monitor(_adapter *padapter, union recv_frame *rframe, stru
 
 	/* read skb information from recv frame */
 	pskb = rframe->u.hdr.pkt;
+	if (pskb == NULL)
+		goto exit;
 	pskb->len = rframe->u.hdr.len;
 	pskb->data = rframe->u.hdr.rx_data;
 	skb_set_tail_pointer(pskb, rframe->u.hdr.len);
