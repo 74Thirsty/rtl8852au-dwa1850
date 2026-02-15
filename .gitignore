@@ -98,3 +98,10 @@ signing_key.priv
 signing_key.x509
 x509.genkey
 
+# Python
+__pycache__/
+*.pyc
+
+# Test artifacts
+tests/test_report.json
+

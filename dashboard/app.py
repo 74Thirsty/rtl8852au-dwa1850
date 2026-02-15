@@ -211,8 +211,9 @@ def api_connect():
         conf += '    key_mgmt=NONE\n'
     conf += '}\n'
 
-    conf_path = f"/tmp/wpa_{iface}.conf"
-    with open(conf_path, "w") as f:
+    conf_path = f"/run/wpa_{iface}.conf"
+    fd = os.open(conf_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         f.write(f'ctrl_interface=/var/run/wpa_supplicant\nupdate_config=1\n\n{conf}')
 
     # Kill existing wpa_supplicant for this interface
