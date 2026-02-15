@@ -10,7 +10,7 @@
 
 <p align="center">
   <strong>Kernel 6.18+ patched &mdash; WiFi 6 USB driver that actually compiles on modern Linux.</strong><br>
-  Out-of-tree driver for Realtek RTL8852AU / RTL8832AU chipsets with 7 targeted kernel compatibility patches.
+  Out-of-tree driver for Realtek RTL8852AU / RTL8832AU chipsets with 9 targeted kernel compatibility patches.
 </p>
 
 ---
@@ -19,21 +19,37 @@
 
 The original [lwfinger/rtl8852au](https://github.com/lwfinger/rtl8852au) driver (v1.15.0.1) **does not compile** on Linux kernel 6.18 and newer. The kernel introduced multiple breaking API changes — renamed functions, removed macros, changed subsystem signatures, and deprecated build flags — causing the build to fail with dozens of errors.
 
-No upstream fix exists. This fork applies **7 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation and functionality on kernel 6.18+ without altering driver behavior.
+Even after resolving compilation errors, kernel 6.18 introduced **`-fstrict-flex-arrays=3`** and **`-fsanitize=bounds-strict`** which exposed latent bugs in the original driver: UBSAN array-out-of-bounds errors on every WPA key operation, and a NULL pointer dereference in the monitor mode receive path that could trigger a kernel panic.
+
+No upstream fix exists. This fork applies **9 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation and functionality on kernel 6.18+ without altering driver behavior.
 
 ---
 
 ## Patches Applied
 
+### Build system fixes
+
 | # | Patch | Details |
 |---|-------|---------|
-| 1 | **Kbuild flags** | `EXTRA_CFLAGS` → `ccflags-y` across all makefiles (Makefile, common.mk, phl.mk, platform/i386_pc.mk, rtl8852a.mk). Kernel 6.18 dropped `EXTRA_CFLAGS` support — all include paths were silently ignored. |
-| 2 | **Linker flags** | `EXTRA_LDFLAGS` → `ldflags-y` — same deprecation for linker flags. |
+| 1 | **Kbuild flags** | `EXTRA_CFLAGS` &rarr; `ccflags-y` across all makefiles (Makefile, common.mk, phl.mk, platform/i386_pc.mk, rtl8852a.mk). Kernel 6.18 dropped `EXTRA_CFLAGS` support — all include paths were silently ignored. |
+| 2 | **Linker flags** | `EXTRA_LDFLAGS` &rarr; `ldflags-y` — same deprecation for linker flags. |
+
+### Kernel API changes
+
+| # | Patch | Details |
+|---|-------|---------|
 | 3 | **Timer header** | Added `#include <linux/timer.h>` in `osdep_service_linux.h`. Timer API declarations moved to a dedicated header in 6.x. |
-| 4 | **Timer API rename** | `del_timer_sync()` → `timer_delete_sync()`, `del_timer()` → `timer_delete()`. Functions renamed in kernel 6.x series. |
-| 5 | **Timer macro removal** | `from_timer()` → `container_of()`. The convenience macro was removed from the timer API. |
+| 4 | **Timer API rename** | `del_timer_sync()` &rarr; `timer_delete_sync()`, `del_timer()` &rarr; `timer_delete()`. Functions renamed in kernel 6.x series. |
+| 5 | **Timer macro removal** | `from_timer()` &rarr; `container_of()`. The convenience macro was removed from the timer API. |
 | 6 | **cfg80211 MLO signatures** | Updated cfg80211_ops function signatures with new `radio_idx` and `link_id` parameters. The WiFi subsystem added Multi-Link Operation (MLO) support in 6.18, changing all cfg80211 callback signatures. |
-| 7 | **Symbol conflict** | `hmac_sha256` → `rtw_hmac_sha256` (+ vector/kdf variants). Kernel 6.18 exports its own `hmac_sha256`, causing linker conflicts with the driver's internal crypto implementation. |
+| 7 | **Symbol conflict** | `hmac_sha256` &rarr; `rtw_hmac_sha256` (+ vector/kdf variants). Kernel 6.18 exports its own `hmac_sha256`, causing linker conflicts with the driver's internal crypto implementation. |
+
+### Runtime bug fixes (kernel 6.18 sanitizers)
+
+| # | Patch | Files | Details |
+|---|-------|-------|---------|
+| 8 | **UBSAN array-out-of-bounds** | `include/ieee80211.h` | Kernel 6.18 compiles with `-fstrict-flex-arrays=3`, which no longer treats `u8 field[0]` (GNU zero-length arrays) as flexible array members. This caused UBSAN to flag every WPA/WPA2 key operation as an out-of-bounds access (`param->u.crypt.key[16]`, `key[24]`) — the TKIP MIC key offsets inside the crypt struct. Fixed by converting all zero-length arrays (`u8 key[0]`, `u8 data[0]`, `u8 buf[0]`) to proper C99 flexible array members (`u8 key[]`). |
+| 9 | **NULL pointer dereference in monitor mode** | `core/rtw_recv.c` | `recv_frame_monitor()` dereferenced `rframe->u.hdr.pkt` (the skb pointer) without a NULL check. When a frame arrived via an error path in `rtw_core_update_recvframe()` (e.g. allocation failure), the NULL skb triggered a kernel panic. Added a NULL guard before the dereference. |
 
 **Bonus:** Removed in-function `MODULE_IMPORT_NS(VFS_internal...)` calls that became invalid when the macro changed to a file-scope static declaration.
 
@@ -248,7 +264,7 @@ This driver exists thanks to the work of:
 
 - **[morrownr](https://github.com/morrownr)** — Community driver documentation, maintenance patterns, and USB ID references that served as valuable upstream reference material.
 
-- **[WimLee115](https://github.com/WimLee115)** — Kernel 6.18+ compatibility patches. Developed, tested, and maintains the 7 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
+- **[WimLee115](https://github.com/WimLee115)** — Kernel 6.18+ compatibility patches. Developed, tested, and maintains the 9 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
 
 ---
 
