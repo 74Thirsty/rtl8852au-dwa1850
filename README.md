@@ -267,22 +267,6 @@ Tests cover: module loading, device binding, interface creation, WiFi scanning, 
 
 ---
 
-## CTF Tools
-
-Security testing tools for authorized pentesting and CTF challenges:
-
-```bash
-# RTSP camera credential finder (multi-threaded, Digest auth)
-python3 tools/tapo_rtsp_brute.py <camera_ip> [wordlist]
-
-# Uses rockyou.txt by default (Kali), or specify a custom wordlist
-python3 tools/tapo_rtsp_brute.py 192.168.1.100 /path/to/wordlist.txt
-```
-
-> **Note:** Only use these tools on devices you own or have explicit authorization to test.
-
----
-
 ## Tested On
 
 | Distribution | Kernel | Status |
