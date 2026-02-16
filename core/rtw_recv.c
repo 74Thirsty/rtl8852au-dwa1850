@@ -3700,9 +3700,15 @@ static int recv_frame_monitor(_adapter *padapter, union recv_frame *rframe, stru
 #ifdef CONFIG_WIFI_MONITOR
 	struct net_device *ndev = padapter->pnetdev;
 	struct sk_buff *pskb = NULL;
+	struct sk_buff *pskb_copy = NULL;
 
 	if (rframe == NULL)
 		goto exit;
+
+	if (ndev == NULL) {
+		ret = _FAIL;
+		goto exit;
+	}
 
 	/* read skb information from recv frame */
 	pskb = rframe->u.hdr.pkt;
@@ -3712,27 +3718,47 @@ static int recv_frame_monitor(_adapter *padapter, union recv_frame *rframe, stru
 	pskb->data = rframe->u.hdr.rx_data;
 	skb_set_tail_pointer(pskb, rframe->u.hdr.len);
 
+	/*
+	 * Create an independent copy with enough headroom for the radiotap
+	 * header. This decouples the delivered packet from the driver's
+	 * internal buffer recycling (phl_release_rxbuf_usb zeroes/reuses the
+	 * underlying buffer after rtw_phl_return_rxbuf). Without the copy,
+	 * the kernel would hold an skb whose data buffer gets recycled.
+	 */
+	pskb_copy = skb_copy_expand(pskb, 64, 0, GFP_ATOMIC);
+	if (pskb_copy == NULL) {
+		ret = _FAIL;
+		goto exit;
+	}
+
 	if (ndev->type == ARPHRD_IEEE80211_RADIOTAP) {
-		/* fill radiotap header */
-		if (rtw_fill_radiotap_hdr(padapter, &rframe->u.hdr.attrib, rx_req, (u8 *)pskb) == _FAIL) {
+		/* fill radiotap header on the copy */
+		if (rtw_fill_radiotap_hdr(padapter, &rframe->u.hdr.attrib, rx_req, (u8 *)pskb_copy) == _FAIL) {
+			rtw_skb_free(pskb_copy);
 			ret = _FAIL;
 			goto exit;
 		}
 	}
 
-	/* write skb information to recv frame */
-	skb_reset_mac_header(pskb);
-	rframe->u.hdr.len = pskb->len;
-	rframe->u.hdr.rx_data = pskb->data;
-	rframe->u.hdr.rx_head = pskb->head;
-	rframe->u.hdr.rx_tail = skb_tail_pointer(pskb);
-	rframe->u.hdr.rx_end = skb_end_pointer(pskb);
+	skb_reset_mac_header(pskb_copy);
+	pskb_copy->ip_summed = CHECKSUM_NONE;
+	pskb_copy->pkt_type = PACKET_OTHERHOST;
+	pskb_copy->protocol = htons(0x0019); /* ETH_P_80211_RAW */
 
 	if (!RTW_CANNOT_RUN(adapter_to_dvobj(padapter))) {
-		/* indicate this recv_frame */
-		ret = rtw_recv_monitor(padapter, rframe);
-	} else
+		/* deliver the independent copy to the kernel */
+		rtw_netif_rx(ndev, pskb_copy);
+	} else {
+		rtw_skb_free(pskb_copy);
 		ret = _FAIL;
+	}
+
+	/*
+	 * Do NOT null rframe->u.hdr.pkt here. The original skb stays with
+	 * the recv_frame and will be freed normally by rtw_os_free_recvframe()
+	 * when rtw_free_recvframe() runs at rx_next. The PHL rx buffer is
+	 * safely recycled because no kernel reference to it remains.
+	 */
 
 exit:
 #endif /* CONFIG_WIFI_MONITOR */
@@ -5291,6 +5317,9 @@ static s32 rtw_core_update_recvframe(struct dvobj_priv *dvobj,
 	if (rx_req->mdata.bc || rx_req->mdata.mc)
 		is_bmc = _TRUE;
 
+	/* Set adapter early so it is valid on all error paths (goto exit) */
+	prframe->u.hdr.adapter = primary_padapter;
+
 	//pre_recv_entry
 	//rtw_get_iface_by_macddr
 	if (rx_req->os_priv) {
@@ -5309,7 +5338,7 @@ static s32 rtw_core_update_recvframe(struct dvobj_priv *dvobj,
 	core_update_recvframe_phyinfo(prframe, rx_req);
 	#endif
 
-	prframe->u.hdr.adapter = primary_padapter;
+	/* adapter already set above, before the alloc path */
 	prframe->u.hdr.pkt->dev = primary_padapter->pnetdev;
 
 	if (!is_bmc) {
@@ -5356,6 +5385,11 @@ static s32 rtw_core_update_recvframe(struct dvobj_priv *dvobj,
 
 exit:
 	prframe->u.hdr.rx_req = rx_req;
+
+	if (prframe->u.hdr.adapter == NULL) {
+		rx_state = CORE_RX_FAIL;
+		return rx_state;
+	}
 
 	pmlmepriv = &(prframe->u.hdr.adapter)->mlmepriv;
 	if (check_fwstate(pmlmepriv, WIFI_MONITOR_STATE)) {

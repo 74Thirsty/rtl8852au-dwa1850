@@ -19,7 +19,7 @@
 
 The original [lwfinger/rtl8852au](https://github.com/lwfinger/rtl8852au) driver (v1.15.0.1) **does not compile** on Linux kernel 6.18 and newer. The kernel introduced multiple breaking API changes — renamed functions, removed macros, changed subsystem signatures, and deprecated build flags — causing the build to fail with dozens of errors.
 
-Even after resolving compilation errors, kernel 6.18 introduced **`-fstrict-flex-arrays=3`** and **`-fsanitize=bounds-strict`** which exposed latent bugs in the original driver: UBSAN array-out-of-bounds errors on every WPA key operation, and a NULL pointer dereference in the monitor mode receive path that could trigger a kernel panic.
+Even after resolving compilation errors, kernel 6.18 introduced **`-fstrict-flex-arrays=3`** and **`-fsanitize=bounds-strict`** which exposed latent bugs in the original driver: UBSAN array-out-of-bounds errors on every WPA key operation, a NULL pointer dereference in the monitor mode receive path, and a SKB buffer lifecycle bug in the monitor mode RX path that caused hard system freezes when capturing packets.
 
 No upstream fix exists. This fork applies **10 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation and functionality on kernel 6.18+ without altering driver behavior.
 
@@ -50,6 +50,7 @@ No upstream fix exists. This fork applies **10 targeted patches** developed by [
 |---|-------|-------|---------|
 | 8 | **UBSAN array-out-of-bounds** | `include/ieee80211.h` | Kernel 6.18 compiles with `-fstrict-flex-arrays=3`, which no longer treats `u8 field[0]` (GNU zero-length arrays) as flexible array members. This caused UBSAN to flag every WPA/WPA2 key operation as an out-of-bounds access (`param->u.crypt.key[16]`, `key[24]`) — the TKIP MIC key offsets inside the crypt struct. Fixed by converting all zero-length arrays (`u8 key[0]`, `u8 data[0]`, `u8 buf[0]`) to proper C99 flexible array members (`u8 key[]`). |
 | 9 | **NULL pointer dereference in monitor mode** | `core/rtw_recv.c` | `recv_frame_monitor()` dereferenced `rframe->u.hdr.pkt` (the skb pointer) without a NULL check. When a frame arrived via an error path in `rtw_core_update_recvframe()` (e.g. allocation failure), the NULL skb triggered a kernel panic. Added a NULL guard before the dereference. |
+| 10 | **SKB use-after-free in monitor mode RX** | `core/rtw_recv.c` | Hard system freeze when capturing packets in monitor mode. After `recv_frame_monitor()` delivered the SKB to the kernel via `rtw_netif_rx()`, the driver's PHL RX buffer recycling (`phl_release_rxbuf_usb`) zeroed and reused the underlying buffer while the kernel still held a reference to the SKB pointing to it. Fixed by using `skb_copy_expand()` to create an independent SKB copy with 64 bytes headroom (for the radiotap header) before kernel delivery. Also moved `prframe->u.hdr.adapter` initialization earlier in `rtw_core_update_recvframe()` to prevent NULL dereference on error paths, and added a NULL guard at the exit label. |
 
 ### Ethtool fix
 
@@ -318,7 +319,7 @@ This driver exists thanks to the work of:
 
 - **[morrownr](https://github.com/morrownr)** — Community driver documentation, maintenance patterns, and USB ID references that served as valuable upstream reference material.
 
-- **[WimLee115](https://github.com/WimLee115)** — Kernel 6.18+ compatibility patches. Developed, tested, and maintains the 9 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
+- **[WimLee115](https://github.com/WimLee115)** — Kernel 6.18+ compatibility patches. Developed, tested, and maintains the 10 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
 
 ---
 
