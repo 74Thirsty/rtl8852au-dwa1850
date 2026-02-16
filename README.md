@@ -10,7 +10,7 @@
 
 <p align="center">
   <strong>Kernel 6.18+ patched &mdash; WiFi 6 USB driver that actually compiles on modern Linux.</strong><br>
-  Out-of-tree driver for Realtek RTL8852AU / RTL8832AU chipsets with 10 targeted kernel compatibility patches.
+  Out-of-tree driver for Realtek RTL8852AU / RTL8832AU chipsets with 11 targeted kernel compatibility patches.
 </p>
 
 ---
@@ -21,7 +21,7 @@ The original [lwfinger/rtl8852au](https://github.com/lwfinger/rtl8852au) driver 
 
 Even after resolving compilation errors, kernel 6.18 introduced **`-fstrict-flex-arrays=3`** and **`-fsanitize=bounds-strict`** which exposed latent bugs in the original driver: UBSAN array-out-of-bounds errors on every WPA key operation, a NULL pointer dereference in the monitor mode receive path, and a SKB buffer lifecycle bug in the monitor mode RX path that caused hard system freezes when capturing packets.
 
-No upstream fix exists. This fork applies **10 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation and functionality on kernel 6.18+ without altering driver behavior.
+No upstream fix exists. This fork applies **11 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation and functionality on kernel 6.18+ without altering driver behavior.
 
 ---
 
@@ -56,7 +56,7 @@ No upstream fix exists. This fork applies **10 targeted patches** developed by [
 
 | # | Patch | Files | Details |
 |---|-------|-------|---------|
-| 10 | **ethtool Speed: unknown** | `os_dep/linux/os_intfs.c` | The driver did not implement `get_link_ksettings`, causing `ethtool wlanX` to report `Speed: unknown`. Added `rtw_ethtool_get_link_ksettings()` which queries the current TX bitrate via `rtw_get_cur_max_rate()` and reports it correctly (e.g. `Speed: 1201Mb/s` for WiFi 6 AX on 80 MHz). |
+| 11 | **ethtool Speed: unknown** | `os_dep/linux/os_intfs.c` | The driver did not implement `get_link_ksettings`, causing `ethtool wlanX` to report `Speed: unknown`. Added `rtw_ethtool_get_link_ksettings()` which queries the current TX bitrate via `rtw_get_cur_max_rate()` and reports it correctly (e.g. `Speed: 1201Mb/s` for WiFi 6 AX on 80 MHz). |
 
 **Bonus:** Removed in-function `MODULE_IMPORT_NS(VFS_internal...)` calls that became invalid when the macro changed to a file-scope static declaration.
 
@@ -319,7 +319,7 @@ This driver exists thanks to the work of:
 
 - **[morrownr](https://github.com/morrownr)** — Community driver documentation, maintenance patterns, and USB ID references that served as valuable upstream reference material.
 
-- **[WimLee115](https://github.com/WimLee115)** — Kernel 6.18+ compatibility patches. Developed, tested, and maintains the 10 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
+- **[WimLee115](https://github.com/WimLee115)** — Kernel 6.18+ compatibility patches. Developed, tested, and maintains the 11 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
 
 ---
 
