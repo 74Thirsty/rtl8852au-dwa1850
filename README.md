@@ -10,7 +10,7 @@
 
 <p align="center">
   <strong>Kernel 6.18+ patched &mdash; WiFi 6 USB driver that actually compiles on modern Linux.</strong><br>
-  Out-of-tree driver for Realtek RTL8852AU / RTL8832AU chipsets with 11 targeted kernel compatibility patches.
+  Out-of-tree driver for Realtek RTL8852AU / RTL8832AU chipsets with 12 targeted kernel compatibility patches.
 </p>
 
 ---
@@ -21,7 +21,7 @@ The original [lwfinger/rtl8852au](https://github.com/lwfinger/rtl8852au) driver 
 
 Even after resolving compilation errors, kernel 6.18 introduced **`-fstrict-flex-arrays=3`** and **`-fsanitize=bounds-strict`** which exposed latent bugs in the original driver: UBSAN array-out-of-bounds errors on every WPA key operation, a NULL pointer dereference in the monitor mode receive path, and a SKB buffer lifecycle bug in the monitor mode RX path that caused hard system freezes when capturing packets.
 
-No upstream fix exists. This fork applies **11 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation and functionality on kernel 6.18+ without altering driver behavior.
+No upstream fix exists. This fork applies **12 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation and functionality on kernel 6.18+ without altering driver behavior.
 
 ---
 
@@ -44,19 +44,20 @@ No upstream fix exists. This fork applies **11 targeted patches** developed by [
 | 6 | **cfg80211 MLO signatures** | Updated cfg80211_ops function signatures with new `radio_idx` and `link_id` parameters. The WiFi subsystem added Multi-Link Operation (MLO) support in 6.18, changing all cfg80211 callback signatures. |
 | 7 | **Symbol conflict** | `hmac_sha256` &rarr; `rtw_hmac_sha256` (+ vector/kdf variants). Kernel 6.18 exports its own `hmac_sha256`, causing linker conflicts with the driver's internal crypto implementation. |
 
-### Runtime bug fixes (kernel 6.18 sanitizers)
+### Runtime bug fixes
 
 | # | Patch | Files | Details |
 |---|-------|-------|---------|
-| 8 | **UBSAN array-out-of-bounds** | `include/ieee80211.h` | Kernel 6.18 compiles with `-fstrict-flex-arrays=3`, which no longer treats `u8 field[0]` (GNU zero-length arrays) as flexible array members. This caused UBSAN to flag every WPA/WPA2 key operation as an out-of-bounds access (`param->u.crypt.key[16]`, `key[24]`) — the TKIP MIC key offsets inside the crypt struct. Fixed by converting all zero-length arrays (`u8 key[0]`, `u8 data[0]`, `u8 buf[0]`) to proper C99 flexible array members (`u8 key[]`). |
-| 9 | **NULL pointer dereference in monitor mode** | `core/rtw_recv.c` | `recv_frame_monitor()` dereferenced `rframe->u.hdr.pkt` (the skb pointer) without a NULL check. When a frame arrived via an error path in `rtw_core_update_recvframe()` (e.g. allocation failure), the NULL skb triggered a kernel panic. Added a NULL guard before the dereference. |
-| 10 | **SKB use-after-free in monitor mode RX** | `core/rtw_recv.c` | Hard system freeze when capturing packets in monitor mode. After `recv_frame_monitor()` delivered the SKB to the kernel via `rtw_netif_rx()`, the driver's PHL RX buffer recycling (`phl_release_rxbuf_usb`) zeroed and reused the underlying buffer while the kernel still held a reference to the SKB pointing to it. Fixed by using `skb_copy_expand()` to create an independent SKB copy with 64 bytes headroom (for the radiotap header) before kernel delivery. Also moved `prframe->u.hdr.adapter` initialization earlier in `rtw_core_update_recvframe()` to prevent NULL dereference on error paths, and added a NULL guard at the exit label. |
+| 8 | **UBSAN array-out-of-bounds** | `include/ieee80211.h` | Kernel 6.18 compiles with `-fstrict-flex-arrays=3`, which no longer treats `u8 field[0]` (GNU zero-length arrays) as flexible array members. This caused UBSAN to flag every WPA/WPA2 key operation as an out-of-bounds access. Fixed by converting all zero-length arrays to proper C99 flexible array members (`u8 key[]`). |
+| 9 | **NULL deref in monitor mode** | `core/rtw_recv.c` | `recv_frame_monitor()` dereferenced `rframe->u.hdr.pkt` without a NULL check. When a frame arrived via an error path in `rtw_core_update_recvframe()` (e.g. allocation failure), the NULL skb triggered a kernel panic. Added a NULL guard before the dereference. |
+| 10 | **SKB use-after-free in monitor mode** | `core/rtw_recv.c` | Hard system freeze when capturing packets in monitor mode. After `recv_frame_monitor()` delivered the SKB to the kernel via `rtw_netif_rx()`, the PHL RX buffer recycling (`phl_release_rxbuf_usb`) zeroed the underlying buffer while the kernel still held a reference. Fixed by using `skb_copy_expand()` to create an independent SKB copy before kernel delivery. Also moved adapter pointer initialization earlier in `rtw_core_update_recvframe()` to prevent NULL dereference on error paths. |
+| 11 | **Monitor mode race condition & double-free** | `core/rtw_recv.c` | Kernel panic during monitor mode packet capture under load (e.g. fern-wifi-cracker, airodump-ng). Three issues fixed: **(a)** `rx_req->os_priv` was not cleared after ownership transfer to the recv_frame, leaving a stale pointer that `phl_recycle_rx_pkt_usb` could double-free on error paths. **(b)** No `netif_running()` check — if the interface was brought down while packets were still in flight, `rtw_netif_rx()` could deliver to a torn-down netdev. **(c)** `RTW_CANNOT_RUN` check happened after the expensive `skb_copy_expand` allocation instead of before. All three are now guarded, and SKB headroom increased from 64 to 128 bytes for safety margin over the 52-byte max radiotap header. |
 
 ### Ethtool fix
 
 | # | Patch | Files | Details |
 |---|-------|-------|---------|
-| 11 | **ethtool Speed: unknown** | `os_dep/linux/os_intfs.c` | The driver did not implement `get_link_ksettings`, causing `ethtool wlanX` to report `Speed: unknown`. Added `rtw_ethtool_get_link_ksettings()` which queries the current TX bitrate via `rtw_get_cur_max_rate()` and reports it correctly (e.g. `Speed: 1201Mb/s` for WiFi 6 AX on 80 MHz). |
+| 12 | **ethtool Speed: unknown** | `os_dep/linux/os_intfs.c` | The driver did not implement `get_link_ksettings`, causing `ethtool wlanX` to report `Speed: unknown`. Added `rtw_ethtool_get_link_ksettings()` which queries the current TX bitrate and reports it correctly (e.g. `Speed: 1201Mb/s` for WiFi 6 AX on 80 MHz). |
 
 **Bonus:** Removed in-function `MODULE_IMPORT_NS(VFS_internal...)` calls that became invalid when the macro changed to a file-scope static declaration.
 
@@ -319,7 +320,7 @@ This driver exists thanks to the work of:
 
 - **[morrownr](https://github.com/morrownr)** — Community driver documentation, maintenance patterns, and USB ID references that served as valuable upstream reference material.
 
-- **[WimLee115](https://github.com/WimLee115)** — Kernel 6.18+ compatibility patches. Developed, tested, and maintains the 11 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
+- **[WimLee115](https://github.com/WimLee115)** — Kernel 6.18+ compatibility patches. Developed, tested, and maintains the 12 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
 
 ---
 

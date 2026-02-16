@@ -3710,6 +3710,15 @@ static int recv_frame_monitor(_adapter *padapter, union recv_frame *rframe, stru
 		goto exit;
 	}
 
+	/* Bail out early if the adapter is shutting down or the interface
+	 * is not running — avoids racing with cfg80211 ifdown which can
+	 * tear down ndev while we are still processing the packet.
+	 */
+	if (RTW_CANNOT_RUN(adapter_to_dvobj(padapter)) || !netif_running(ndev)) {
+		ret = _FAIL;
+		goto exit;
+	}
+
 	/* read skb information from recv frame */
 	pskb = rframe->u.hdr.pkt;
 	if (pskb == NULL)
@@ -3720,12 +3729,14 @@ static int recv_frame_monitor(_adapter *padapter, union recv_frame *rframe, stru
 
 	/*
 	 * Create an independent copy with enough headroom for the radiotap
-	 * header. This decouples the delivered packet from the driver's
-	 * internal buffer recycling (phl_release_rxbuf_usb zeroes/reuses the
-	 * underlying buffer after rtw_phl_return_rxbuf). Without the copy,
-	 * the kernel would hold an skb whose data buffer gets recycled.
+	 * header. 128 bytes gives comfortable margin over the ~52-byte max
+	 * radiotap header (RTAP_HDR_MAX is 64). This decouples the
+	 * delivered packet from the driver's internal buffer recycling
+	 * (phl_release_rxbuf_usb zeroes/reuses the underlying buffer after
+	 * rtw_phl_return_rxbuf). Without the copy, the kernel would hold
+	 * an skb whose data buffer gets recycled.
 	 */
-	pskb_copy = skb_copy_expand(pskb, 64, 0, GFP_ATOMIC);
+	pskb_copy = skb_copy_expand(pskb, 128, 0, GFP_ATOMIC);
 	if (pskb_copy == NULL) {
 		ret = _FAIL;
 		goto exit;
@@ -3745,13 +3756,8 @@ static int recv_frame_monitor(_adapter *padapter, union recv_frame *rframe, stru
 	pskb_copy->pkt_type = PACKET_OTHERHOST;
 	pskb_copy->protocol = htons(0x0019); /* ETH_P_80211_RAW */
 
-	if (!RTW_CANNOT_RUN(adapter_to_dvobj(padapter))) {
-		/* deliver the independent copy to the kernel */
-		rtw_netif_rx(ndev, pskb_copy);
-	} else {
-		rtw_skb_free(pskb_copy);
-		ret = _FAIL;
-	}
+	/* deliver the independent copy to the kernel */
+	rtw_netif_rx(ndev, pskb_copy);
 
 	/*
 	 * Do NOT null rframe->u.hdr.pkt here. The original skb stays with
@@ -5324,6 +5330,7 @@ static s32 rtw_core_update_recvframe(struct dvobj_priv *dvobj,
 	//rtw_get_iface_by_macddr
 	if (rx_req->os_priv) {
 		prframe->u.hdr.pkt = rx_req->os_priv; /*skb*/
+		rx_req->os_priv = NULL; /* transfer ownership to recv_frame */
 		core_update_recvframe_pkt(prframe, rx_req);
 	} else {
 		err = core_alloc_recvframe_pkt(prframe, rx_req);
