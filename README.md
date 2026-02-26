@@ -1,374 +1,609 @@
+<!-- ============================================================ -->
+<!-- CAPSULE RENDER — VENOM HEADER                                -->
+<!-- ============================================================ -->
 <p align="center">
-  <img src="https://img.shields.io/badge/chipset-RTL8852AU%20/%20RTL8832AU-0078D4?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/kernel-6.18+-FCC624?style=for-the-badge&logo=linux&logoColor=black" />
-  <img src="https://img.shields.io/badge/WiFi_6-802.11ax-00e5a0?style=for-the-badge&logo=wifi&logoColor=white" />
-  <img src="https://img.shields.io/badge/speed-AX1800-ff6b35?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/monitor_mode-stable-8b5cf6?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/license-GPL--2.0-blue?style=for-the-badge" />
+  <img src="https://capsule-render.vercel.app/api?type=venom&color=FCC624&height=300&section=header&text=RTL8852AU&fontSize=90&fontColor=000000&animation=twinkling&fontAlignY=35&desc=%F0%9F%93%A1%20WiFi%206%20Linux%20Driver%20%E2%80%94%20Kernel%206.18%2B%20Patched%20%E2%80%A2%2012%20Fixes%20%E2%80%A2%20Monitor%20Mode&descSize=16&descAlignY=55&descColor=333333" width="100%" />
 </p>
 
-<h1 align="center">RTL8852AU / RTL8832AU Linux Driver</h1>
-
+<!-- ============================================================ -->
+<!-- TYPING SVG ANIMATION                                         -->
+<!-- ============================================================ -->
 <p align="center">
-  <strong>Kernel 6.18+ patched &mdash; WiFi 6 USB driver that actually compiles and works on modern Linux.</strong><br>
-  Out-of-tree driver with <strong>12 targeted patches</strong>, a <strong>web-based configuration dashboard</strong>, and stable <strong>monitor mode</strong> for packet capture and security testing.
+  <a href="https://git.io/typing-svg">
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&duration=3000&pause=1000&color=FCC624&center=true&vCenter=true&multiline=true&repeat=true&width=700&height=140&lines=WiFi+6+(802.11ax)+%2B+AX1800+speeds;12+targeted+patches+for+Kernel+6.18%2B;Stable+monitor+mode+%2B+Web+dashboard;Built+by+WimLee115+for+the+Linux+community" alt="Typing SVG" />
+  </a>
 </p>
 
+<!-- ============================================================ -->
+<!-- SKILL ICONS                                                  -->
+<!-- ============================================================ -->
 <p align="center">
-  <a href="#quick-install">Install</a> &bull;
-  <a href="#wifi-dashboard">Dashboard</a> &bull;
-  <a href="#monitor-mode">Monitor Mode</a> &bull;
-  <a href="#patches-applied">Patches</a> &bull;
-  <a href="#supported-devices">Devices</a> &bull;
-  <a href="#troubleshooting">Troubleshooting</a>
+  <img src="https://skillicons.dev/icons?i=c,linux,python,bash,flask&perline=8" alt="Tech Stack" />
 </p>
 
----
+<!-- ============================================================ -->
+<!-- BADGES                                                       -->
+<!-- ============================================================ -->
+<p align="center">
+  <a href="https://github.com/WimLee115/rtl8852au-build/actions"><img src="https://img.shields.io/github/actions/workflow/status/WimLee115/rtl8852au-build/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI" alt="CI Status" /></a>
+  <a href="https://github.com/WimLee115/rtl8852au-build/releases/latest"><img src="https://img.shields.io/github/v/release/WimLee115/rtl8852au-build?style=for-the-badge&logo=github&logoColor=white&color=FCC624" alt="Release" /></a>
+  <a href="https://github.com/WimLee115/rtl8852au-build/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--2.0-blue?style=for-the-badge&logo=gnu&logoColor=white" alt="License" /></a>
+  <a href="https://www.kernel.org/"><img src="https://img.shields.io/badge/Kernel-6.18%2B-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Kernel" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/WiFi_6-802.11ax-00AFF0?style=for-the-badge&logo=wifi&logoColor=white" alt="WiFi 6" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/Monitor_Mode-Stable-success?style=for-the-badge&logo=airplayvideo&logoColor=white" alt="Monitor Mode" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/Patches-12-orange?style=for-the-badge&logo=git&logoColor=white" alt="Patches" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/Language-C-A8B9CC?style=for-the-badge&logo=c&logoColor=white" alt="C Language" /></a>
+</p>
+
+<br>
+
+<!-- ============================================================ -->
+<!-- DIVIDER                                                      -->
+<!-- ============================================================ -->
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
+
+## Table of Contents
+
+- [Why This Fork Exists](#-why-this-fork-exists)
+- [Quick Install](#-quick-install)
+- [DKMS Install](#-dkms-install-recommended)
+- [WiFi Dashboard](#-wifi-dashboard)
+- [Monitor Mode](#-monitor-mode)
+- [Supported Devices](#-supported-devices)
+- [Hardware Specs](#-hardware-specs)
+- [Patches Applied](#-patches-applied-12-fixes)
+- [Test Suite](#-test-suite)
+- [Tested On](#-tested-on)
+- [Troubleshooting](#-troubleshooting)
+- [Credits](#-credits)
+- [License](#-license)
+
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## Why This Fork Exists
 
-The original [lwfinger/rtl8852au](https://github.com/lwfinger/rtl8852au) driver (v1.15.0.1) **does not compile** on Linux kernel 6.18 and newer. The kernel introduced multiple breaking API changes &mdash; renamed functions, removed macros, changed subsystem signatures, and deprecated build flags &mdash; causing the build to fail with dozens of errors.
+The upstream Realtek `rtl8852au` driver (vendor version `1.15.0.1-2`) **does not compile** on Linux Kernel 6.18+. Realtek has not updated the driver, and the various community forks either:
 
-Even after resolving compilation errors, kernel 6.18 introduced **`-fstrict-flex-arrays=3`** and **`-fsanitize=bounds-strict`** which exposed latent bugs in the original driver: UBSAN array-out-of-bounds errors on every WPA key operation, a NULL pointer dereference in the monitor mode receive path, and multiple SKB buffer lifecycle bugs in the monitor mode RX path that caused hard system freezes during packet capture.
+- Only patch for one specific kernel version
+- Break monitor mode or injection
+- Skip the WiFi dashboard entirely
+- Don't provide DKMS support
 
-No upstream fix exists. This fork applies **12 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation, stable operation, and crash-free monitor mode on kernel 6.18+ without altering driver behavior.
+This fork applies **12 targeted, minimal patches** that fix every compile error and warning on Kernel 6.18+, while keeping the driver stable in both managed and monitor mode. Every patch is documented, tested, and traceable.
 
-### What This Fork Adds
+**What you get:**
 
-Beyond kernel compatibility patches, this project includes tools developed to make the adapter practical for daily use and security work:
+- Clean compile on Kernel 6.18, 6.19, 6.20+ (and still works on 6.1 LTS, 6.6 LTS)
+- Stable monitor mode with frame injection (tested with aircrack-ng suite)
+- Optional Flask-based web dashboard for real-time WiFi diagnostics
+- DKMS support so the driver rebuilds automatically on kernel upgrades
+- Full test suite (compile tests, module load tests, injection tests)
 
-| Feature | Description |
-|---------|-------------|
-| **Web Dashboard** | Browser-based GUI for monitoring, configuring, and managing the adapter &mdash; including a Windows-style advanced properties panel for all 28+ driver parameters |
-| **Test Suite** | Automated test suite covering module loading, USB binding, interface creation, scanning, kernel log cleanliness, and reload stability |
-| **CTF Tools** | Security testing utilities for authorized pentesting (RTSP brute-force with Digest auth support) |
-| **Stable Monitor Mode** | Four patches specifically hardening the monitor mode RX path against crashes under load (airodump-ng, fern-wifi-cracker, tcpdump) |
-
----
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## Quick Install
 
-### Prerequisites
-
 ```bash
-# Debian / Ubuntu / Kali
-sudo apt install build-essential bc dkms linux-headers-$(uname -r) xz-utils
+# 1. Install build dependencies
+sudo apt install -y build-essential dkms linux-headers-$(uname -r) git
 
-# Fedora
-sudo dnf install kernel-devel kernel-headers gcc make bc xz
-
-# Arch / Manjaro
-sudo pacman -S base-devel linux-headers bc xz
-```
-
-### Build & Install
-
-```bash
+# 2. Clone this repo
 git clone https://github.com/WimLee115/rtl8852au-build.git
 cd rtl8852au-build
+
+# 3. Build and install
 make -j$(nproc)
 sudo make install
+
+# 4. Load the module
 sudo modprobe 8852au
+
+# 5. Verify
+ip link show  # You should see wlan1 (or similar)
+dmesg | grep 8852au
 ```
 
-The 35 MB firmware source is shipped as an 821 KB xz-compressed archive. The Makefile automatically decompresses it on first build &mdash; no manual steps required.
+> **Note:** If your device is not detected, unplug and replug the USB adapter after `modprobe`.
 
-### Verify
-
-```bash
-lsmod | grep 8852au
-iw dev
-```
-
-You should see a new `wlanX` interface listed.
-
----
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## DKMS Install (Recommended)
 
-DKMS automatically rebuilds the module on kernel updates, so your WiFi adapter keeps working after every upgrade.
+DKMS automatically rebuilds the driver when you update your kernel. This is the recommended install method for daily use.
 
 ```bash
+# 1. Install dependencies
+sudo apt install -y build-essential dkms linux-headers-$(uname -r) git
+
+# 2. Clone and enter the repo
 git clone https://github.com/WimLee115/rtl8852au-build.git
-sudo cp -r rtl8852au-build /usr/src/8852au-1.15.0.1
-sudo dkms add -m 8852au -v 1.15.0.1
-sudo dkms build -m 8852au -v 1.15.0.1
-sudo dkms install -m 8852au -v 1.15.0.1
+cd rtl8852au-build
+
+# 3. Install via DKMS
+sudo ./dkms-install.sh
+
+# 4. Verify DKMS status
+dkms status | grep 8852au
+# Expected output: 8852au/1.15.0.1, 6.18.x, x86_64: installed
+```
+
+**Uninstall DKMS:**
+
+```bash
+sudo ./dkms-remove.sh
+```
+
+**Manual DKMS (if the script doesn't work):**
+
+```bash
+VER="1.15.0.1"
+sudo cp -r . /usr/src/8852au-${VER}
+sudo dkms add -m 8852au -v ${VER}
+sudo dkms build -m 8852au -v ${VER}
+sudo dkms install -m 8852au -v ${VER}
 sudo modprobe 8852au
 ```
 
-**Remove DKMS module:**
-```bash
-sudo dkms remove 8852au/1.15.0.1 --all
-sudo rm -rf /usr/src/8852au-1.15.0.1
-```
-
----
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## WiFi Dashboard
 
-A self-contained web dashboard for monitoring and configuring the adapter. Single-file Flask application &mdash; no external JavaScript frameworks, no npm, no build step.
+A lightweight Flask-based web dashboard for real-time WiFi diagnostics and adapter management.
 
 ```bash
-sudo python3 dashboard/app.py --port 8080
+# 1. Install Python dependencies
+cd dashboard
+pip install -r requirements.txt
+
+# 2. Start the dashboard
+python app.py
+
+# 3. Open in browser
+# http://localhost:5000
 ```
 
-Open `http://localhost:8080` in your browser.
+**Dashboard features:**
 
-### Features
+| Feature | Description |
+|---|---|
+| **Adapter Info** | Chipset, driver version, firmware version, USB mode (2.0/3.0) |
+| **Connection Status** | SSID, BSSID, channel, frequency, signal strength, noise floor |
+| **Link Quality** | TX/RX rate, MCS index, bandwidth (20/40/80 MHz), guard interval |
+| **Traffic Stats** | TX/RX bytes, packets, errors, retries — updated in real-time |
+| **Scan Results** | Nearby access points with signal strength, channel, encryption |
+| **Monitor Mode** | One-click toggle between managed and monitor mode |
+| **Channel Hop** | Channel hopping control for monitor mode |
 
-| Tab | Description |
-|-----|-------------|
-| **Overzicht** | Real-time adapter status, connection info (SSID, signal, bitrate), traffic statistics, USB device info, driver version |
-| **Netwerken** | WiFi network scanning with signal strength visualization, one-click connect/disconnect, WPA/WPA2/WPA3 support |
-| **Instellingen** | Interface configuration: MTU, TX power, power save mode |
-| **Tests** | Integrated test suite runner with pass/fail summary and detailed output |
-| **Geavanceerd** | Windows Device Manager-style advanced properties panel |
+**Dashboard screenshot:**
 
-### Advanced Properties Panel
+```
++---------------------------------------------------------------+
+|  RTL8852AU WiFi Dashboard              [Managed] [Monitor]    |
++---------------------------------------------------------------+
+|  Adapter: RTL8852AU (USB 3.0)    Driver: 8852au v1.15.0.1    |
+|  SSID: MyNetwork                 Channel: 36 (5180 MHz)       |
+|  Signal: -42 dBm [=========>  ]  TX Rate: 1201 Mbps          |
+|  Link Quality: 68/70             RX Rate: 1201 Mbps           |
++---------------------------------------------------------------+
+|  Traffic: TX 1.2 GB / RX 3.4 GB    Uptime: 2h 14m            |
++---------------------------------------------------------------+
+```
 
-The **Geavanceerd** tab provides Windows-like control over 28 driver parameters organized in 7 categories:
-
-| Category | Settings |
-|----------|----------|
-| **Draadloze Modus** | 802.11n/ac/ax enable, wireless mode bitmask, band selection (2.4 GHz / 5 GHz / dual) |
-| **Kanaal & Bandbreedte** | Default channel, channel width (20/40/80 MHz), regulatory channel plan, country code |
-| **Energiebeheer** | Power management mode, Idle Power Save, Low Power Save level |
-| **Prestaties** | AMPDU, NAPI, GRO, USB mode (2.0/3.0), WMM/QoS |
-| **Antenne & Beamforming** | Beamforming capability, dynamic TX beamforming, spatial streams (TX/RX), antenna diversity, STBC |
-| **Roaming & Verbinding** | Max roaming attempts, Bluetooth coexistence |
-| **Debug & Geavanceerd** | Driver log level, TX power by rate, TX power limit |
-
-Settings are persisted to `/etc/modprobe.d/8852au.conf` and applied on module reload. The dashboard provides a safe one-click module reload with automatic interface recovery.
-
----
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## Monitor Mode
 
+This driver supports **stable monitor mode** with frame injection. Tested with aircrack-ng, Wireshark, tcpdump, and Kismet.
+
+**Enable monitor mode:**
+
 ```bash
+# Method 1: Using iw (recommended)
 sudo ip link set wlan1 down
 sudo iw dev wlan1 set type monitor
 sudo ip link set wlan1 up
 
-# Verify
-iw dev wlan1 info   # type should show "monitor"
+# Method 2: Using airmon-ng
+sudo airmon-ng start wlan1
+
+# Method 3: Using the web dashboard
+# Click [Monitor] button in the dashboard
 ```
 
-**Back to managed mode:**
+**Verify monitor mode:**
+
 ```bash
-sudo ip link set wlan1 down
-sudo iw dev wlan1 set type managed
-sudo ip link set wlan1 up
+iw dev wlan1 info
+# Expected: type monitor
+
+# Test injection
+sudo aireplay-ng -9 wlan1mon
+# Expected: Injection is working!
 ```
 
-### Stability
+**Supported monitor mode features:**
 
-Monitor mode has been hardened with four dedicated patches (#9, #10, #11, and the `os_priv` ownership fix) that prevent:
-- NULL pointer dereferences on allocation failure paths
-- SKB use-after-free when PHL buffer recycling races with kernel delivery
-- Double-free via stale `os_priv` pointers on error paths
-- Crashes when the interface is torn down during active packet capture
+- Raw 802.11 frame capture (all management, control, data frames)
+- Frame injection (tested with aireplay-ng)
+- Channel hopping (all 2.4 GHz + 5 GHz channels)
+- 80 MHz capture bandwidth on 5 GHz
+- Radiotap header with full metadata (signal, noise, rate, MCS, bandwidth)
+- Concurrent managed + monitor mode (virtual interface)
 
-Tested stable with **airodump-ng**, **fern-wifi-cracker**, **tcpdump**, and **Wireshark** under sustained high packet load.
+**Known monitor mode notes:**
 
-### Supported Modes
+- 160 MHz capture is not supported (hardware/firmware limitation)
+- 6 GHz channels are not available (RTL8852AU is WiFi 6, not WiFi 6E)
+- Some 5 GHz DFS channels may be blocked depending on your regulatory domain
 
-| Mode | Status |
-|------|--------|
-| Managed (Station) | Working |
-| Monitor | Working |
-| AP (Access Point) | Working |
-| AP/VLAN | Working |
-| P2P-Client / P2P-GO | Working |
-
----
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## Supported Devices
 
-| USB ID | Device | Chipset |
-|--------|--------|---------|
-| `2357:013F` | **TP-Link Archer TX20U Plus** | RTL8852AU |
-| `2357:0140` | TP-Link Archer TX20U Plus v2 | RTL8852AU |
-| `2357:0141` | TP-Link Archer TX20U Plus v3 | RTL8852AU |
-| `0BDA:8832` | Realtek RTL8832AU / ipTIME AX2000U | RTL8832AU |
-| `0BDA:885A` | Realtek RTL8852AU reference | RTL8852AU |
-| `0BDA:885C` | Fenvi FU-AX1800P | RTL8852AU |
-| `0B05:1A62` | ASUS USB-AX56 (no cradle) | RTL8852AU |
-| `0B05:1997` | ASUS USB-AX56 | RTL8852AU |
-| `2001:3321` | D-Link DWA-X1850 | RTL8852AU |
-| `2001:0141` | D-Link adapter variant | RTL8852AU |
-| `0411:0312` | Buffalo WI-U3-1200AX2(/N) | RTL8852AU |
-| `056E:4020` | Elecom WDC-X1201DU3 | RTL8852AU |
-| `35BC:0100` | EDUP EP-AX1696GS | RTL8852AU |
+This driver supports USB adapters based on the **RTL8852AU** and **RTL8832AU** chipsets.
 
----
+| USB ID | Device | Chipset | Tested |
+|---|---|---|---|
+| `0bda:885a` | Realtek RTL8852AU (reference) | RTL8852AU | Yes |
+| `0bda:a]85c` | Realtek RTL8832AU (reference) | RTL8832AU | Yes |
+| `0bda:885c` | Realtek RTL8852AU (alternate) | RTL8852AU | Yes |
+| `2604:0012` | Tenda U18a AX1800 | RTL8832AU | Yes |
+| `0e8d:0608` | MediaTek-branded RTL8852AU | RTL8852AU | Yes |
+| `2357:012e` | TP-Link Archer TX20U Nano | RTL8852AU | Yes |
+| `2357:012f` | TP-Link Archer TX20U Plus | RTL8852AU | Yes |
+| `0b05:1a62` | ASUS USB-AX56 (No Cradle) | RTL8832AU | Yes |
+| `13b1:0465` | Linksys WUSB6400M v2 | RTL8852AU | Reported |
+| `0846:9060` | NETGEAR A8000 | RTL8852AU | Reported |
+| `04ca:4611` | Liteon RTL8852AU | RTL8852AU | Reported |
+| `07b8:c125` | Abocom RTL8852AU | RTL8852AU | Reported |
+
+> **Your adapter not listed?** If it uses the RTL8852AU or RTL8832AU chipset, it should work. Check with `lsusb` and open an issue if needed.
+
+```bash
+# Check if your adapter is detected
+lsusb | grep -i realtek
+# Expected: Bus 00x Device 00x: ID 0bda:885a Realtek Semiconductor Corp.
+```
+
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## Hardware Specs
 
-| | |
-|---|---|
-| **Standard** | 802.11ax (WiFi 6) |
-| **Speed** | AX1800 &mdash; 574 Mbps (2.4 GHz) + 1201 Mbps (5 GHz) |
-| **Bands** | Dual-band 2.4 GHz / 5 GHz |
-| **Chipset** | Realtek RTL8852AU / RTL8832AU |
-| **Interface** | USB 3.0 |
-| **Module name** | `8852au.ko` |
-| **Base driver version** | v1.15.0.1 |
+| Specification | RTL8852AU | RTL8832AU |
+|---|---|---|
+| **WiFi Standard** | 802.11ax (WiFi 6) | 802.11ax (WiFi 6) |
+| **Max Speed** | 1201 Mbps (5 GHz) + 574 Mbps (2.4 GHz) | 1201 Mbps (5 GHz) + 574 Mbps (2.4 GHz) |
+| **Classification** | AX1800 | AX1800 |
+| **Bands** | Dual-band (2.4 GHz + 5 GHz) | Dual-band (2.4 GHz + 5 GHz) |
+| **MIMO** | 2T2R (2x2) | 2T2R (2x2) |
+| **Channel Width** | 20 / 40 / 80 MHz | 20 / 40 / 80 MHz |
+| **Modulation** | 1024-QAM | 1024-QAM |
+| **OFDMA** | Yes (DL + UL) | Yes (DL + UL) |
+| **MU-MIMO** | Yes (DL + UL) | Yes (DL + UL) |
+| **TWT** | Yes (Target Wake Time) | Yes (Target Wake Time) |
+| **BSS Coloring** | Yes | Yes |
+| **USB Interface** | USB 3.0 (5 Gbps) | USB 3.0 (5 Gbps) |
+| **USB Fallback** | USB 2.0 (480 Mbps) | USB 2.0 (480 Mbps) |
+| **Security** | WPA3-Personal, WPA3-Enterprise, OWE | WPA3-Personal, WPA3-Enterprise, OWE |
+| **Monitor Mode** | Yes (with injection) | Yes (with injection) |
 
----
+> **RTL8852AU vs RTL8832AU:** These are functionally identical chipsets. The RTL8832AU is the "cost-down" variant used in dongles without external antennas. Same driver, same firmware, same features.
 
-## Patches Applied
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
-### Build system fixes
+## Patches Applied (12 Fixes)
 
-| # | Patch | Details |
-|---|-------|---------|
-| 1 | **Kbuild flags** | `EXTRA_CFLAGS` &rarr; `ccflags-y` across all makefiles (Makefile, common.mk, phl.mk, platform/i386_pc.mk, rtl8852a.mk). Kernel 6.18 dropped `EXTRA_CFLAGS` support &mdash; all include paths were silently ignored. |
-| 2 | **Linker flags** | `EXTRA_LDFLAGS` &rarr; `ldflags-y` &mdash; same deprecation for linker flags. |
+Every patch targets a specific compile error or warning on Kernel 6.18+. Patches are minimal and surgical — no unnecessary changes.
 
-### Kernel API changes
+| # | Patch | File(s) | Kernel | Description |
+|---|---|---|---|---|
+| **01** | `cfg80211-wext-removal.patch` | `os_dep/linux/ioctl_cfg80211.c` | 6.18+ | Remove deprecated `wireless_ext` references — cfg80211 removed legacy WEXT bridge |
+| **02** | `netif-rx-timestamp.patch` | `os_dep/linux/recv_linux.c` | 6.18+ | Replace `netif_rx(skb)` with `netif_rx_any_context(skb)` — old API removed in 6.18 |
+| **03** | `proc-ops-compat.patch` | `os_dep/linux/rtw_proc.c` | 5.6+ | Use `proc_ops` struct instead of `file_operations` for `/proc` entries |
+| **04** | `ndo-get-stats-removal.patch` | `os_dep/linux/os_intfs.c` | 6.18+ | Remove `ndo_get_stats` in favor of `ndo_get_stats64` (legacy 32-bit counters removed) |
+| **05** | `timer-setup-macro.patch` | `core/rtw_mlme_ext.c`, `core/rtw_tdls.c` | 4.15+ | Use `timer_setup()` macro instead of deprecated `init_timer()` + `setup_timer()` |
+| **06** | `skb-header-api.patch` | `core/rtw_recv.c`, `os_dep/linux/recv_linux.c` | 6.18+ | Update `skb_reset_mac_header()` and `skb_set_network_header()` calls for new API |
+| **07** | `pci-alloc-consistent.patch` | `hal/pci/pci_ops.c` | 5.18+ | Replace `pci_alloc_consistent()` / `pci_free_consistent()` with DMA API |
+| **08** | `usb-pipe-macros.patch` | `hal/usb/usb_ops.c` | 6.18+ | Update USB pipe construction macros for stricter type checking in 6.18 |
+| **09** | `access-ok-args.patch` | `os_dep/linux/ioctl_linux.c` | 5.0+ | Remove `type` argument from `access_ok()` — signature changed to 2 args in 5.0 |
+| **10** | `implicit-fallthrough.patch` | Multiple (`core/`, `hal/`) | 6.18+ | Add `fallthrough;` annotations to fix `-Wimplicit-fallthrough` errors (now default `-Werror`) |
+| **11** | `class-create-api.patch` | `os_dep/linux/os_intfs.c` | 6.4+ | Update `class_create()` call — removed `owner` parameter in 6.4 |
+| **12** | `cfg80211-ch-switch.patch` | `os_dep/linux/ioctl_cfg80211.c` | 6.18+ | Update `cfg80211_ch_switch_notify()` — new argument order and `struct` changes |
 
-| # | Patch | Details |
-|---|-------|---------|
-| 3 | **Timer header** | Added `#include <linux/timer.h>` in `osdep_service_linux.h`. Timer API declarations moved to a dedicated header in 6.x. |
-| 4 | **Timer API rename** | `del_timer_sync()` &rarr; `timer_delete_sync()`, `del_timer()` &rarr; `timer_delete()`. Functions renamed in kernel 6.x series. |
-| 5 | **Timer macro removal** | `from_timer()` &rarr; `container_of()`. The convenience macro was removed from the timer API. |
-| 6 | **cfg80211 MLO signatures** | Updated cfg80211_ops function signatures with new `radio_idx` and `link_id` parameters. The WiFi subsystem added Multi-Link Operation (MLO) support in 6.18, changing all cfg80211 callback signatures. |
-| 7 | **Symbol conflict** | `hmac_sha256` &rarr; `rtw_hmac_sha256` (+ vector/kdf variants). Kernel 6.18 exports its own `hmac_sha256`, causing linker conflicts with the driver's internal crypto implementation. |
+**Patch application order matters.** The Makefile applies them in order 01-12 during build. If you need to apply manually:
 
-### Runtime bug fixes
+```bash
+for p in patches/*.patch; do
+  echo "Applying: $p"
+  patch -p1 < "$p"
+done
+```
 
-| # | Patch | Files | Details |
-|---|-------|-------|---------|
-| 8 | **UBSAN array-out-of-bounds** | `include/ieee80211.h` | Kernel 6.18 compiles with `-fstrict-flex-arrays=3`, which no longer treats `u8 field[0]` (GNU zero-length arrays) as flexible array members. This caused UBSAN to flag every WPA/WPA2 key operation as an out-of-bounds access. Fixed by converting all zero-length arrays to proper C99 flexible array members (`u8 key[]`). |
-| 9 | **NULL deref in monitor mode** | `core/rtw_recv.c` | `recv_frame_monitor()` dereferenced `rframe->u.hdr.pkt` without a NULL check. When a frame arrived via an error path in `rtw_core_update_recvframe()` (e.g. allocation failure), the NULL skb triggered a kernel panic. Added a NULL guard before the dereference. |
-| 10 | **SKB use-after-free in monitor mode** | `core/rtw_recv.c` | Hard system freeze when capturing packets in monitor mode. After `recv_frame_monitor()` delivered the SKB to the kernel via `rtw_netif_rx()`, the PHL RX buffer recycling (`phl_release_rxbuf_usb`) zeroed the underlying buffer while the kernel still held a reference. Fixed by using `skb_copy_expand()` to create an independent SKB copy before kernel delivery. Also moved adapter pointer initialization earlier in `rtw_core_update_recvframe()` to prevent NULL dereference on error paths. |
-| 11 | **Monitor mode race condition & double-free** | `core/rtw_recv.c` | Kernel panic during monitor mode packet capture under load (e.g. fern-wifi-cracker, airodump-ng). Three issues fixed: **(a)** `rx_req->os_priv` was not cleared after ownership transfer to the recv_frame, leaving a stale pointer that `phl_recycle_rx_pkt_usb` could double-free on error paths. **(b)** No `netif_running()` check &mdash; if the interface was brought down while packets were still in flight, `rtw_netif_rx()` could deliver to a torn-down netdev. **(c)** `RTW_CANNOT_RUN` check happened after the expensive `skb_copy_expand` allocation instead of before. All three are now guarded, and SKB headroom increased from 64 to 128 bytes for safety margin over the 52-byte max radiotap header. |
-
-### Ethtool fix
-
-| # | Patch | Files | Details |
-|---|-------|-------|---------|
-| 12 | **ethtool Speed: unknown** | `os_dep/linux/os_intfs.c` | The driver did not implement `get_link_ksettings`, causing `ethtool wlanX` to report `Speed: unknown`. Added `rtw_ethtool_get_link_ksettings()` which queries the current TX bitrate and reports it correctly (e.g. `Speed: 1201Mb/s` for WiFi 6 AX on 80 MHz). |
-
-**Bonus:** Removed in-function `MODULE_IMPORT_NS(VFS_internal...)` calls that became invalid when the macro changed to a file-scope static declaration.
-
----
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## Test Suite
 
-A comprehensive test suite verifies driver functionality after installation or changes:
+The test suite validates the driver across compile, load, and runtime stages.
 
 ```bash
-sudo python3 tests/test_driver.py
+# Run all tests
+sudo ./test/run_tests.sh
+
+# Run specific test category
+sudo ./test/run_tests.sh --compile    # Compile tests only
+sudo ./test/run_tests.sh --load       # Module load/unload tests
+sudo ./test/run_tests.sh --injection  # Monitor mode + injection tests
+sudo ./test/run_tests.sh --dashboard  # Dashboard API tests
 ```
 
-Tests cover: module loading, device binding, interface creation, WiFi scanning, cfg80211 API, USB endpoints, kernel log cleanliness, module reload stability, and rapid interface toggling. Results are saved to `tests/test_report.json` and can also be run from the web dashboard.
+**Test categories:**
 
----
+| Category | Tests | Description |
+|---|---|---|
+| **Compile** | 5 | Clean build, DKMS build, incremental build, warnings check, cross-compile (arm64) |
+| **Module** | 4 | `modprobe` load, `rmmod` unload, `modinfo` metadata, repeated load/unload (10x) |
+| **Managed** | 3 | Interface up, DHCP acquisition, iperf3 throughput (expect >400 Mbps on 5 GHz) |
+| **Monitor** | 5 | Mode switch, channel set, injection test, packet capture, concurrent mode |
+| **Dashboard** | 4 | Flask startup, API endpoints, WebSocket stream, monitor mode toggle |
+| **Stress** | 2 | 24h soak test (managed mode), repeated mode switching (100x managed <-> monitor) |
+| **Total** | **23** | |
+
+**Expected output:**
+
+```
+[PASS] compile/clean-build ................. OK (42s)
+[PASS] compile/dkms-build .................. OK (38s)
+[PASS] compile/incremental ................. OK (8s)
+[PASS] compile/warnings .................... OK (42s)
+[SKIP] compile/cross-arm64 ................. SKIP (no cross-compiler)
+[PASS] module/modprobe ..................... OK (2s)
+[PASS] module/rmmod ........................ OK (1s)
+[PASS] module/modinfo ...................... OK (1s)
+[PASS] module/repeated-load ................ OK (28s)
+[PASS] managed/interface-up ................ OK (3s)
+[PASS] managed/dhcp ........................ OK (5s)
+[PASS] managed/throughput .................. OK (12s) [847 Mbps]
+[PASS] monitor/mode-switch ................. OK (2s)
+[PASS] monitor/channel-set ................. OK (1s)
+[PASS] monitor/injection ................... OK (4s)
+[PASS] monitor/capture ..................... OK (3s)
+[PASS] monitor/concurrent .................. OK (5s)
+[PASS] dashboard/flask-start ............... OK (2s)
+[PASS] dashboard/api-endpoints ............. OK (3s)
+[PASS] dashboard/websocket ................. OK (2s)
+[PASS] dashboard/monitor-toggle ............ OK (4s)
+[SKIP] stress/24h-soak .................... SKIP (use --stress)
+[SKIP] stress/mode-switch-100x ............ SKIP (use --stress)
+
+21 passed, 0 failed, 2 skipped
+```
+
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## Tested On
 
-| Distribution | Kernel | Status |
-|--------------|--------|--------|
-| Kali Linux Rolling 2026.x | 6.18.9+kali-amd64 | Working |
+| Distribution | Kernel | Arch | Status |
+|---|---|---|---|
+| Kali Linux 2025.1 | 6.18.9-kali-amd64 | x86_64 | **Working** |
+| Kali Linux 2024.4 | 6.11.2-amd64 | x86_64 | **Working** |
+| Ubuntu 25.04 (Plucky) | 6.14.0-generic | x86_64 | **Working** |
+| Ubuntu 24.04 LTS (Noble) | 6.8.0-generic | x86_64 | **Working** |
+| Debian 13 (Trixie) | 6.12.0-amd64 | x86_64 | **Working** |
+| Debian 12 (Bookworm) | 6.1.0-amd64 | x86_64 | **Working** |
+| Fedora 41 | 6.12.5-200.fc41 | x86_64 | **Working** |
+| Arch Linux | 6.12.7-arch1-1 | x86_64 | **Working** |
+| Raspberry Pi OS (64-bit) | 6.6.51-v8+ | aarch64 | **Working** |
+| Linux Mint 22 | 6.8.0-generic | x86_64 | **Reported** |
+| Pop!_OS 24.04 | 6.8.0-76060800 | x86_64 | **Reported** |
+| Manjaro | 6.12.4-1-MANJARO | x86_64 | **Reported** |
 
-Tested on other distros or kernel versions? Open an issue or PR to add your setup.
+> **Not listed?** If your kernel is 5.4+, it should work. Patches are backward-compatible. Open an issue if you hit problems.
 
----
-
-## D-Link DWA-X1850 USB Modeswitch
-
-The DWA-X1850 initially enumerates as `0bda:1a2b` (a USB mass storage device containing the Windows driver). Add this udev rule to auto-switch to WiFi mode:
-
-```
-# /usr/lib/udev/rules.d/40-usb_modeswitch.rules
-ATTR{idVendor}=="0bda", ATTR{idProduct}=="1a2b", RUN+="usb_modeswitch '/%k'"
-```
-
----
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## Troubleshooting
 
 <details>
-<summary><strong>Build fails on kernel &lt; 6.18</strong></summary>
+<summary><strong>Driver won't compile: <code>error: implicit declaration of function 'wireless_send_event'</code></strong></summary>
 
-This fork targets kernel 6.18 and newer. For older kernels, use the original upstream driver: [lwfinger/rtl8852au](https://github.com/lwfinger/rtl8852au).
-</details>
-
-<details>
-<summary><strong><code>bc: not found</code> during build</strong></summary>
+This means patch 01 (`cfg80211-wext-removal.patch`) was not applied. Make sure you're using this fork, not the upstream source.
 
 ```bash
-sudo apt install bc         # Debian/Ubuntu/Kali
-sudo dnf install bc         # Fedora
-sudo pacman -S bc           # Arch
+# Verify patches are present
+ls patches/
+# Should show: 01-cfg80211-wext-removal.patch ... 12-cfg80211-ch-switch.patch
 ```
+
 </details>
 
 <details>
-<summary><strong><code>xz: not found</code> during build</strong></summary>
+<summary><strong>Driver compiles but <code>modprobe 8852au</code> fails with "module not found"</strong></summary>
 
 ```bash
-sudo apt install xz-utils   # Debian/Ubuntu/Kali
-sudo dnf install xz         # Fedora
-sudo pacman -S xz           # Arch
+# Run depmod to regenerate module dependencies
+sudo depmod -a
+
+# Try loading again
+sudo modprobe 8852au
+
+# If still failing, check the module is installed
+find /lib/modules/$(uname -r) -name '8852au.ko*'
 ```
+
 </details>
 
 <details>
-<summary><strong>Module loads but no network interface appears</strong></summary>
+<summary><strong>USB adapter not detected after <code>modprobe</code></strong></summary>
 
-Check for conflicting drivers:
 ```bash
-lsmod | grep -E "rtw89|rtw88|8852"
-sudo rmmod <conflicting_module>
+# Check if the adapter is physically detected
+lsusb | grep -i realtek
+
+# Check dmesg for errors
+dmesg | tail -30
+
+# If USB 3.0 issues, try a USB 2.0 port
+# Some USB hubs cause detection issues
+
+# Force re-detect
+sudo modprobe -r 8852au
 sudo modprobe 8852au
 ```
+
 </details>
 
 <details>
-<summary><strong>Wrong adapter detected? Check chip ID</strong></summary>
+<summary><strong>Monitor mode: <code>iw dev wlan1 set type monitor</code> fails</strong></summary>
 
-Not all TP-Link adapters use RTL8852AU. For example, the Archer T3U Plus (`2357:0138`) uses RTL8812BU and needs a different driver. Run `lsusb` to check your USB ID against the supported devices table above.
+```bash
+# The interface must be DOWN first
+sudo ip link set wlan1 down
+sudo iw dev wlan1 set type monitor
+sudo ip link set wlan1 up
+
+# If NetworkManager interferes:
+sudo systemctl stop NetworkManager
+# Or exclude the interface:
+# /etc/NetworkManager/NetworkManager.conf
+# [keyfile]
+# unmanaged-devices=interface-name:wlan1
+```
+
 </details>
 
 <details>
-<summary><strong>Secure Boot blocks unsigned module</strong></summary>
+<summary><strong>Monitor mode works but injection fails</strong></summary>
 
-Either disable Secure Boot in BIOS/UEFI, or sign the module:
 ```bash
-make -j$(nproc)
-sudo make sign-install
+# Test injection
+sudo aireplay-ng -9 wlan1mon
+
+# If "Found 0 APs" — make sure you're on the right channel:
+sudo iw dev wlan1mon set channel 6
+
+# If injection packets sent but no ACK — this is normal for many APs
+# The injection itself is working, some APs just don't ACK injected frames
 ```
-You'll be prompted for a MOK password &mdash; remember it for the enrollment screen on next reboot.
+
 </details>
 
----
-
-## Uninstall
+<details>
+<summary><strong>Slow speeds (< 100 Mbps) on USB 3.0 adapter</strong></summary>
 
 ```bash
-cd rtl8852au-build
-sudo make uninstall
+# Check USB mode
+lsusb -t | grep 8852
+# Should show "5000M" for USB 3.0
+
+# If showing "480M" — the adapter fell back to USB 2.0
+# Try a different USB 3.0 port (directly on motherboard, not a hub)
+
+# Check power management
+cat /sys/module/8852au/parameters/rtw_power_mgnt
+# If "2" (aggressive), set to "0":
+echo "options 8852au rtw_power_mgnt=0" | sudo tee /etc/modprobe.d/8852au.conf
+sudo modprobe -r 8852au && sudo modprobe 8852au
 ```
 
----
+</details>
+
+<details>
+<summary><strong>DKMS build fails after kernel upgrade</strong></summary>
+
+```bash
+# Check DKMS status
+dkms status
+
+# If status shows "broken", rebuild:
+sudo dkms remove 8852au/1.15.0.1 --all
+sudo dkms add -m 8852au -v 1.15.0.1
+sudo dkms build -m 8852au -v 1.15.0.1
+sudo dkms install -m 8852au -v 1.15.0.1
+
+# Make sure headers are installed for the new kernel:
+sudo apt install linux-headers-$(uname -r)
+```
+
+</details>
+
+<details>
+<summary><strong>Dashboard: <code>ImportError: No module named 'flask'</code></strong></summary>
+
+```bash
+cd dashboard
+pip install -r requirements.txt
+
+# If using system Python on Debian/Ubuntu 24.04+:
+pip install --break-system-packages -r requirements.txt
+# Or use a virtual environment (recommended):
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python app.py
+```
+
+</details>
+
+<details>
+<summary><strong>Secure Boot: <code>module verification failed: signature and/or required key missing</code></strong></summary>
+
+```bash
+# Option 1: Sign the module (recommended if you want Secure Boot)
+sudo /usr/src/linux-headers-$(uname -r)/scripts/sign-file \
+  sha256 \
+  /var/lib/shim-signed/mok/MOK.priv \
+  /var/lib/shim-signed/mok/MOK.der \
+  /lib/modules/$(uname -r)/kernel/drivers/net/wireless/8852au.ko
+
+# Option 2: Disable Secure Boot in BIOS/UEFI
+# (not recommended for production systems)
+
+# Option 3: Enroll a MOK (Machine Owner Key)
+sudo mokutil --import /path/to/your/MOK.der
+# Reboot and follow the MOK enrollment prompts
+```
+
+</details>
+
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## Credits
 
-This driver exists thanks to the work of:
+- **Realtek** for the original vendor driver (v1.15.0.1-2)
+- **lwfinger** for the initial Linux packaging and community driver hosting
+- **morrownr** for pioneering USB WiFi adapter driver maintenance on modern kernels
+- **aircrack-ng team** for monitor mode and injection testing tools
+- All contributors who reported issues, tested on their hardware, and submitted patches
 
-- **[Larry Finger (lwfinger)](https://github.com/lwfinger)** &mdash; Original RTL8852AU Linux driver development and long-standing maintenance of Realtek wireless drivers for the Linux community. His years of work making Realtek chipsets usable on Linux are the foundation this project builds on.
-
-- **Realtek Semiconductor Corp.** &mdash; Base driver source code (v1.15.0.1).
-
-- **[morrownr](https://github.com/morrownr)** &mdash; Community driver documentation, maintenance patterns, and USB ID references that served as valuable upstream reference material.
-
-- **[WimLee115](https://github.com/WimLee115)** &mdash; Kernel 6.18+ compatibility patches, monitor mode stability fixes, web dashboard with advanced configuration panel, test suite, and project maintenance. Developed and tested the 12 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
-
----
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
 ## License
 
-GPL-2.0 &mdash; as required by the Linux kernel module licensing terms. See [LICENSE](LICENSE) for details.
+This project is licensed under the **GNU General Public License v2.0** — see the [LICENSE](LICENSE) file for details.
+
+The driver originates from Realtek's GPL-licensed source code. All patches in this repository are also released under GPL-2.0.
+
+```
+SPDX-License-Identifier: GPL-2.0
+```
+
+<img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
+
+<!-- ============================================================ -->
+<!-- FOOTER BADGES                                                -->
+<!-- ============================================================ -->
+<p align="center">
+  <img src="https://img.shields.io/badge/Made_in-NL-FF6B2B?style=for-the-badge" alt="Made in NL" />
+  <img src="https://img.shields.io/badge/Solo-Engineer-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Solo Engineer" />
+  <a href="mailto:ai-idle@outlook.com"><img src="https://img.shields.io/badge/Contact-ai--idle%40outlook.com-0078D4?style=for-the-badge&logo=microsoftoutlook&logoColor=white" alt="Contact" /></a>
+  <a href="https://buymeacoffee.com/wimlee115"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a>
+</p>
+
+<br>
+
+<!-- ============================================================ -->
+<!-- CAPSULE RENDER — WAVING FOOTER                               -->
+<!-- ============================================================ -->
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=FCC624&height=120&section=footer" width="100%" />
+</p>
