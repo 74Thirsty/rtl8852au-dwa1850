@@ -2,7 +2,7 @@
 <!-- CAPSULE RENDER — VENOM HEADER                                -->
 <!-- ============================================================ -->
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=venom&color=FCC624&height=300&section=header&text=RTL8852AU&fontSize=90&fontColor=000000&animation=twinkling&fontAlignY=35&desc=%F0%9F%93%A1%20WiFi%206%20Linux%20Driver%20%E2%80%94%20Kernel%206.18%2B%20Patched%20%E2%80%A2%2012%20Fixes%20%E2%80%A2%20Monitor%20Mode&descSize=16&descAlignY=55&descColor=333333" width="100%" />
+  <img src="https://capsule-render.vercel.app/api?type=venom&color=1a1a2e&height=300&section=header&text=RTL8852AU&fontSize=90&fontColor=FCC624&animation=twinkling&fontAlignY=35&desc=%F0%9F%93%A1%20WiFi%206%20Linux%20Driver%20%E2%80%94%20Kernel%206.18%2B%20Patched%20%E2%80%A2%2012%20Fixes%20%E2%80%A2%20Monitor%20Mode&descSize=16&descAlignY=55&descColor=58a6ff" width="100%" />
 </p>
 
 <!-- ============================================================ -->
