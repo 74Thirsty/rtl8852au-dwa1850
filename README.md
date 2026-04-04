@@ -251,6 +251,7 @@ This driver supports USB adapters based on the **RTL8852AU** and **RTL8832AU** c
 | `0e8d:0608` | MediaTek-branded RTL8852AU | RTL8852AU | Yes |
 | `2357:012e` | TP-Link Archer TX20U Nano | RTL8852AU | Yes |
 | `2357:012f` | TP-Link Archer TX20U Plus | RTL8852AU | Yes |
+| `3625:010f` | TP-Link Archer TX35U Plus | RTL8852AU | Yes |
 | `0b05:1a62` | ASUS USB-AX56 (No Cradle) | RTL8832AU | Yes |
 | `13b1:0465` | Linksys WUSB6400M v2 | RTL8852AU | Reported |
 | `0846:9060` | NETGEAR A8000 | RTL8852AU | Reported |
