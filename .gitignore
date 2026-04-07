@@ -59,6 +59,8 @@ modules.builtin
 
 # Firmware: uncompressed version (generated from .xz at build time)
 phl/hal_g6/mac/fw_ax/rtl8852a/hal8852a_fw.c
+# Firmware: compressed version (must be tracked in git)
+!phl/hal_g6/mac/fw_ax/rtl8852a/hal8852a_fw.c.xz
 
 #
 # Generated include files
