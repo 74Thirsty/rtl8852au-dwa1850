@@ -15,4 +15,7 @@
 #ifndef _HAL_SER_H_
 #define _HAL_SER_H_
 
+u32 rtw_hal_ser_get_error_status(void *hal, u32 *err);
+enum rtw_hal_status rtw_hal_ser_set_error_status(void *hal, u32 err);
+
 #endif /* _HAL_SER_H_ */
