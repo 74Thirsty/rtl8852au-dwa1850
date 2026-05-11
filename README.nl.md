@@ -191,6 +191,9 @@ Met `--host 0.0.0.0` stel je het dashboard bloot aan het LAN. Het
 auth-token is dan het enige dat tussen het netwerk en root-acties op
 deze machine staat — houd het privé.
 
+Een doorloop van elk tabblad, elke knop en een handvol veelvoorkomende
+scenario's staat in [`docs/dashboard.nl.md`](docs/dashboard.nl.md).
+
 ## Test suite
 
 `tests/test_driver.py` is een Python-`unittest`-suite die de driver

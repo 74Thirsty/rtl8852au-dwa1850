@@ -182,6 +182,9 @@ Pass `--host 0.0.0.0` to expose the dashboard to the LAN. The auth
 token is then the only thing standing between the network and
 root-level operations on this host — keep it private.
 
+A walkthrough of every tab, every control and a handful of common
+scenarios is in [`docs/dashboard.md`](docs/dashboard.md).
+
 ## Test suite
 
 `tests/test_driver.py` is a Python `unittest` suite that exercises the
