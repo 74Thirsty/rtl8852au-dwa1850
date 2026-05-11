@@ -349,6 +349,116 @@ def api_history():
         return jsonify({"samples": list(METRIC_HISTORY)})
 
 
+# Cached scan result reused by /api/spectrum so users don't have to wait
+# four extra seconds for an iw-scan-trigger when they switch sub-views.
+_LAST_SCAN = {"t": 0.0, "networks": []}
+
+
+def _freq_to_channel(freq):
+    if freq is None:
+        return None
+    if 2412 <= freq <= 2484:
+        return 14 if freq == 2484 else (freq - 2407) // 5
+    if 5170 <= freq <= 5825:
+        return (freq - 5000) // 5
+    if 5955 <= freq <= 7115:    # 6 GHz, not supported by RTL8852AU but harmless
+        return (freq - 5950) // 5
+    return None
+
+
+def _aggregate_spectrum(networks):
+    """Group scan results by channel and return per-band summaries."""
+    bands = {"2.4": [], "5": []}
+    by_channel = {}
+    for n in networks:
+        freq = n.get("frequency")
+        if freq is None:
+            continue
+        ch = n.get("channel") or _freq_to_channel(freq)
+        if ch is None:
+            continue
+        band = "2.4" if freq < 3000 else "5"
+        slot = by_channel.setdefault((band, ch), {
+            "band": band, "channel": ch, "freq": freq,
+            "ap_count": 0, "max_signal": None, "ssids": [],
+        })
+        slot["ap_count"] += 1
+        sig = n.get("signal")
+        if sig is not None and (slot["max_signal"] is None or sig > slot["max_signal"]):
+            slot["max_signal"] = sig
+        ssid = n.get("ssid") or ""
+        if ssid and ssid not in slot["ssids"]:
+            slot["ssids"].append(ssid)
+    for slot in by_channel.values():
+        bands[slot["band"]].append(slot)
+    for v in bands.values():
+        v.sort(key=lambda s: s["channel"])
+    return bands
+
+
+@app.route("/api/spectrum")
+def api_spectrum():
+    """Return the latest scan grouped by channel + band. Re-runs a fresh
+    scan only when the cached result is older than 30 s."""
+    iface = get_wlan_interface()
+    if not iface:
+        return jsonify({"error": "No interface found"}), 404
+
+    age = time.time() - _LAST_SCAN["t"]
+    networks = _LAST_SCAN["networks"]
+    if age > 30 or not networks:
+        run(["ip", "link", "set", iface, "up"])
+        run(["iw", "dev", iface, "scan", "trigger"])
+        time.sleep(3)
+        rc, out, _ = run(["iw", "dev", iface, "scan", "dump"], timeout=20)
+        if rc == 0:
+            networks = _parse_scan(out)
+            _LAST_SCAN["networks"] = networks
+            _LAST_SCAN["t"] = time.time()
+
+    return jsonify({
+        "bands": _aggregate_spectrum(networks),
+        "total_aps": len(networks),
+        "scanned_at": _LAST_SCAN["t"],
+    })
+
+
+def _parse_scan(out):
+    """Parse `iw scan dump` output into the same shape the /api/scan
+    endpoint emits. Extracted so /api/spectrum can reuse the parser."""
+    networks = []
+    current = None
+    for line in out.split('\n'):
+        line = line.strip()
+        m = re.match(r'BSS ([0-9a-f:]+)', line)
+        if m:
+            if current:
+                networks.append(current)
+            current = {"bssid": m.group(1), "ssid": "", "signal": None,
+                       "frequency": None, "channel": None, "security": "Open"}
+        if current is None:
+            continue
+        if line.startswith("SSID:"):
+            current["ssid"] = line[6:].strip()
+        elif line.startswith("signal:"):
+            m2 = re.search(r'(-?\d+\.?\d*)', line)
+            if m2:
+                current["signal"] = float(m2.group(1))
+        elif line.startswith("freq:"):
+            m2 = re.search(r'(\d+)', line)
+            if m2:
+                current["frequency"] = int(m2.group(1))
+        elif "WPA" in line or "RSN" in line:
+            current["security"] = "WPA2/WPA3" if "RSN" in line else "WPA"
+        elif line.startswith("DS Parameter set: channel"):
+            m2 = re.search(r'channel (\d+)', line)
+            if m2:
+                current["channel"] = int(m2.group(1))
+    if current:
+        networks.append(current)
+    return networks
+
+
 @app.route("/api/scan")
 def api_scan():
     iface = get_wlan_interface()
@@ -918,6 +1028,11 @@ table tr:hover td { background: var(--tr-hover); }
 .kbd-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.9rem; }
 .kbd { display: inline-block; background: var(--bg-input); border: 1px solid var(--border-strong); border-radius: 4px;
        padding: 1px 6px; font-family: monospace; font-size: 0.8rem; color: var(--text); }
+.spectrum-band { margin: 12px 0 20px; }
+.spectrum-band-label { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 6px;
+                       text-transform: uppercase; letter-spacing: 0.04em; }
+.spectrum-canvas { width: 100%; height: 140px; display: block; background: var(--bg-input);
+                   border: 1px solid var(--border); border-radius: 8px; }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .adv-container { flex-direction: column; } .adv-sidebar { width: 100%; } }
 @media (max-width: 900px) {
     .header { padding-bottom: 70px; }
@@ -1058,6 +1173,18 @@ table tr:hover td { background: var(--tr-hover); }
     <!-- Networks Tab -->
     <div id="tab-networks" class="tab-content">
         <div class="card">
+            <h2 data-i18n="card.spectrum">Channel usage</h2>
+            <div id="spectrum-summary" style="color: var(--text-dim); font-size: 0.85rem; margin-bottom: 10px;" data-i18n="spectrum.click">Click Scan to load — auto-refresh every 30 s.</div>
+            <div class="spectrum-band">
+                <div class="spectrum-band-label"><strong>2.4 GHz</strong> <span data-i18n="spectrum.ch24">(channels 1–14)</span></div>
+                <canvas id="spectrum-24" class="spectrum-canvas"></canvas>
+            </div>
+            <div class="spectrum-band">
+                <div class="spectrum-band-label"><strong>5 GHz</strong> <span data-i18n="spectrum.ch5">(channels 36–165)</span></div>
+                <canvas id="spectrum-5" class="spectrum-canvas"></canvas>
+            </div>
+        </div>
+        <div class="card" style="margin-top: 20px;">
             <h2><span data-i18n="card.scan">Available networks</span>
                 <button class="btn btn-primary btn-sm" onclick="doScan()" style="float:right;" data-i18n="btn.scan">
                     Scan
@@ -1279,6 +1406,12 @@ const I18N = {
         'kbd.lang': 'Toggle language', 'kbd.help': 'Show this help',
         'footer.by': 'by',
         'footer.and': '& the Linux community',
+        'card.spectrum': 'Channel usage',
+        'spectrum.click': 'Click Scan to load — auto-refresh every 30 s.',
+        'spectrum.ch24': '(channels 1–14)',
+        'spectrum.ch5': '(channels 36–165)',
+        'spectrum.nodata': 'no scan data yet',
+        'spectrum.summary': 'aps across {n} channels',
     },
     nl: {
         'status.loading': 'Laden...',
@@ -1391,6 +1524,12 @@ const I18N = {
         'kbd.lang': 'Taal wisselen', 'kbd.help': 'Deze help tonen',
         'footer.by': 'door',
         'footer.and': '& de Linux-community',
+        'card.spectrum': 'Kanaal-bezetting',
+        'spectrum.click': 'Klik op Scannen om te laden — automatisch verversen elke 30 s.',
+        'spectrum.ch24': '(kanalen 1–14)',
+        'spectrum.ch5': '(kanalen 36–165)',
+        'spectrum.nodata': 'nog geen scan-data',
+        'spectrum.summary': 'APs verdeeld over {n} kanalen',
     }
 };
 
@@ -1569,6 +1708,114 @@ async function refreshTrends() {
 }
 window.addEventListener('resize', () => drawAllTrends());
 
+// ── Spectrum view ──────────────────────────────────────────────────────
+const SPECTRUM_24_CHANNELS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14];
+const SPECTRUM_5_CHANNELS  = [36,40,44,48,52,56,60,64,100,104,108,112,116,120,124,128,132,136,140,144,149,153,157,161,165];
+
+let SPECTRUM_DATA = null;
+
+function drawSpectrumBand(canvasId, channels, slots) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(rect.width * dpr, 200);
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const w = rect.width, h = rect.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const margin = {top: 6, right: 8, bottom: 22, left: 28};
+    const innerW = w - margin.left - margin.right;
+    const innerH = h - margin.top - margin.bottom;
+    const slotMap = new Map();
+    (slots || []).forEach(s => slotMap.set(s.channel, s));
+    const colWidth = innerW / channels.length;
+
+    // Y-axis: signal range -90..-20 dBm
+    const yMin = -90, yMax = -20;
+    function yFor(dbm) {
+        if (dbm == null) return null;
+        const clamped = Math.max(yMin, Math.min(yMax, dbm));
+        return margin.top + innerH - ((clamped - yMin) / (yMax - yMin)) * innerH;
+    }
+
+    // Background grid + y-axis labels
+    ctx.strokeStyle = themeColor('--border');
+    ctx.fillStyle = themeColor('--text-dim');
+    ctx.font = '10px sans-serif';
+    ctx.lineWidth = 1;
+    [-30, -50, -70, -90].forEach(db => {
+        const y = yFor(db);
+        ctx.beginPath();
+        ctx.moveTo(margin.left, y);
+        ctx.lineTo(w - margin.right, y);
+        ctx.stroke();
+        ctx.fillText(db + ' dBm', 2, y + 3);
+    });
+
+    // Bars per channel
+    channels.forEach((ch, idx) => {
+        const x = margin.left + idx * colWidth + colWidth * 0.15;
+        const barW = colWidth * 0.7;
+        const slot = slotMap.get(ch);
+        if (slot && slot.max_signal != null) {
+            const y = yFor(slot.max_signal);
+            const colour = slot.ap_count >= 3
+                ? '#dc2626'
+                : slot.ap_count === 2 ? '#f59e0b' : themeColor('--accent');
+            ctx.fillStyle = colour;
+            ctx.fillRect(x, y, barW, margin.top + innerH - y);
+            // AP-count badge above the bar
+            ctx.fillStyle = themeColor('--text');
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(slot.ap_count, x + barW / 2, y - 3);
+        }
+        // X-axis label
+        ctx.fillStyle = themeColor('--text-dim');
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(ch, x + barW / 2, h - 6);
+    });
+    ctx.textAlign = 'start';
+}
+
+function drawSpectrum() {
+    if (!SPECTRUM_DATA) {
+        ['spectrum-24', 'spectrum-5'].forEach(id => {
+            const c = document.getElementById(id);
+            if (c) {
+                const ctx = c.getContext('2d');
+                const rect = c.getBoundingClientRect();
+                c.width = rect.width; c.height = rect.height;
+                ctx.fillStyle = themeColor('--text-dim');
+                ctx.font = '12px sans-serif';
+                ctx.fillText(t('spectrum.nodata'), 12, rect.height / 2 + 4);
+            }
+        });
+        return;
+    }
+    drawSpectrumBand('spectrum-24', SPECTRUM_24_CHANNELS, SPECTRUM_DATA.bands['2.4']);
+    drawSpectrumBand('spectrum-5',  SPECTRUM_5_CHANNELS,  SPECTRUM_DATA.bands['5']);
+    const usedChannels =
+        ((SPECTRUM_DATA.bands['2.4'] || []).length + (SPECTRUM_DATA.bands['5'] || []).length);
+    document.getElementById('spectrum-summary').textContent =
+        SPECTRUM_DATA.total_aps + ' ' + t('spectrum.summary').replace('{n}', usedChannels);
+}
+
+async function refreshSpectrum() {
+    try {
+        const r = await fetch('/api/spectrum');
+        if (!r.ok) return;
+        SPECTRUM_DATA = await r.json();
+        drawSpectrum();
+    } catch (e) { /* leave stale data */ }
+}
+
+window.addEventListener('resize', () => drawSpectrum());
+
 function formatBytes(b) {
     if (b < 1024) return b + ' B';
     if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
@@ -1603,6 +1850,7 @@ function switchTab(name) {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     if (name === 'advanced' && !advLoaded) loadAdvanced();
+    if (name === 'networks') { refreshSpectrum(); }
 }
 
 // refreshStatus() is defined later as a wrapper around applyStatusPayload —
@@ -2212,6 +2460,12 @@ startStream();
 refreshDriverInfo();
 refreshTrends();
 setInterval(refreshTrends, 5000);
+setInterval(() => {
+    // Spectrum re-fetch only when the Networks tab is the active one.
+    if (document.getElementById('tab-networks').classList.contains('active')) {
+        refreshSpectrum();
+    }
+}, 30000);
 </script>
 </body>
 </html>
