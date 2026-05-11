@@ -3,22 +3,110 @@
 RTL8852AU WiFi Adapter Dashboard
 Flask-based web interface for monitoring and configuring the WiFi adapter.
 
-Usage: sudo python3 dashboard/app.py [--port 8080]
+Usage: sudo python3 dashboard/app.py [--port 8080] [--host 127.0.0.1]
+
+The dashboard binds to loopback by default. All endpoints (including the
+HTML root) are protected by HTTP Basic Auth — username is ignored, the
+password is the per-user token stored in ~/.config/rtl8852au/dashboard.token
+(generated on first run). Pass `--host 0.0.0.0` to expose to the LAN; in
+that case the token is the only thing standing between the network and
+root-level operations on this host.
 """
 
-import subprocess
+import argparse
+import glob
+import hmac
+import json
 import os
 import re
-import json
+import secrets
+import socket
+import subprocess
 import time
-import glob
-import argparse
-from flask import Flask, render_template_string, jsonify, request
+from pathlib import Path
+
+from flask import Flask, Response, jsonify, render_template_string, request
 
 app = Flask(__name__)
 
 DRIVER_NAME = "rtl8852au"
 MODULE_NAME = "8852au"
+
+# ── Auth + Host-header hardening ─────────────────────────────────────
+# Goal: the dashboard runs as root and exposes endpoints that can change
+# WiFi state, reload the kernel module, and run the test suite. Without
+# auth, any process on this machine (or — when --host 0.0.0.0 — anyone on
+# the LAN, plus drive-by JS via DNS-rebinding) could trigger those.
+#
+# We use HTTP Basic Auth so the browser handles credential caching for us
+# (no JS changes in the embedded UI), and a Host-header whitelist so a
+# DNS-rebind attack cannot reach the loopback endpoint from a remote tab.
+
+# Resolve XDG_CONFIG_HOME (sudo keeps the original HOME; if not, fall back
+# to /root/.config). The token file is mode 0600 and survives restarts.
+def _config_dir():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    return Path(base) / "rtl8852au"
+
+
+TOKEN_PATH = _config_dir() / "dashboard.token"
+ALLOWED_HOSTS = set()  # populated in __main__ before app.run
+
+
+def _load_or_create_token():
+    """Return the dashboard auth token, generating one on first run."""
+    try:
+        if TOKEN_PATH.is_file():
+            existing = TOKEN_PATH.read_text().strip()
+            if existing:
+                return existing
+    except (IOError, OSError):
+        pass
+    token = secrets.token_urlsafe(32)
+    try:
+        TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+        TOKEN_PATH.write_text(token + "\n")
+        TOKEN_PATH.chmod(0o600)
+    except (IOError, OSError) as exc:
+        print(f"WARNING: could not persist token to {TOKEN_PATH}: {exc}")
+        print("         A fresh token will be generated on every restart.")
+    return token
+
+
+AUTH_TOKEN = _load_or_create_token()
+
+
+@app.before_request
+def _enforce_auth_and_host():
+    """Reject requests with an unexpected Host header (DNS-rebinding
+    defence) or without valid HTTP Basic credentials."""
+    host = (request.host or "").split(":")[0].lower()
+    if host not in ALLOWED_HOSTS:
+        return Response("forbidden host\n", status=403, mimetype="text/plain")
+
+    auth = request.authorization
+    supplied = (auth.password or "") if auth is not None else ""
+    if not hmac.compare_digest(supplied, AUTH_TOKEN):
+        return Response(
+            "authentication required\n",
+            status=401,
+            mimetype="text/plain",
+            headers={"WWW-Authenticate": 'Basic realm="RTL8852AU Dashboard"'},
+        )
+    return None
+
+
+def _escape_wpa_string(value):
+    """Escape a string for use inside a double-quoted wpa_supplicant value.
+
+    Strips newlines (would split into a fresh directive and let an
+    attacker inject network blocks or override ctrl_interface). Escapes
+    the two characters the wpa_supplicant parser treats specially inside
+    a quoted string: backslash and double-quote.
+    """
+    value = value.replace("\r", "").replace("\n", "")
+    value = value.replace("\\", "\\\\").replace('"', '\\"')
+    return value
 
 
 def run(cmd, timeout=15):
@@ -200,17 +288,26 @@ def api_connect():
     if not iface:
         return jsonify({"error": "No interface found"}), 404
 
-    data = request.get_json()
-    ssid = data.get("ssid", "")
-    password = data.get("password", "")
+    data = request.get_json(silent=True) or {}
+    ssid = data.get("ssid", "") or ""
+    password = data.get("password", "") or ""
 
-    if not ssid:
-        return jsonify({"error": "SSID is required"}), 400
+    # SSID: IEEE 802.11 limits to 32 bytes. Reject newlines/embedded NUL.
+    if not ssid or len(ssid.encode("utf-8")) > 32:
+        return jsonify({"error": "SSID must be 1-32 bytes UTF-8"}), 400
+    # WPA passphrase spec: 8-63 ASCII chars (or 64 hex). Empty = open network.
+    if password and not (8 <= len(password) <= 63):
+        return jsonify({"error": "WPA passphrase must be 8-63 characters"}), 400
 
-    # Create wpa_supplicant config
-    conf = f'network={{\n    ssid="{ssid}"\n'
-    if password:
-        conf += f'    psk="{password}"\n'
+    # Escape both for the quoted wpa_supplicant string literal. Without
+    # this, an SSID like  evil"\nnetwork={ssid="x  would inject extra
+    # network blocks (rogue-AP redirect, ctrl_interface override).
+    ssid_esc = _escape_wpa_string(ssid)
+    password_esc = _escape_wpa_string(password)
+
+    conf = f'network={{\n    ssid="{ssid_esc}"\n'
+    if password_esc:
+        conf += f'    psk="{password_esc}"\n'
     else:
         conf += '    key_mgmt=NONE\n'
     conf += '}\n'
@@ -220,18 +317,17 @@ def api_connect():
     with os.fdopen(fd, "w") as f:
         f.write(f'ctrl_interface=/var/run/wpa_supplicant\nupdate_config=1\n\n{conf}')
 
-    # Kill existing wpa_supplicant for this interface
     run("killall -9 wpa_supplicant 2>/dev/null; sleep 1")
     run(f"ip link set {iface} up")
 
-    # Start wpa_supplicant
-    rc, _, err = run(f"wpa_supplicant -B -i {iface} -c {conf_path}", timeout=10)
+    # Discard stderr from wpa_supplicant — it can echo the passphrase on
+    # failure paths (e.g. "Line N: invalid PSK 'mypass123'").
+    rc, _, _ = run(f"wpa_supplicant -B -i {iface} -c {conf_path}", timeout=10)
     if rc != 0:
-        return jsonify({"error": f"wpa_supplicant failed: {err}"}), 500
+        return jsonify({"error": "wpa_supplicant failed to start"}), 500
 
-    # Request DHCP
     run(f"dhclient -r {iface} 2>/dev/null")
-    rc, _, err = run(f"dhclient {iface}", timeout=30)
+    rc, _, _ = run(f"dhclient {iface}", timeout=30)
     if rc != 0:
         return jsonify({"warning": "Connected but DHCP failed", "ssid": ssid})
 
@@ -1377,11 +1473,40 @@ def index():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="RTL8852AU WiFi Dashboard")
     parser.add_argument("--port", type=int, default=8080)
-    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="Bind address (default: 127.0.0.1, loopback only). "
+             "Pass 0.0.0.0 to expose to the LAN — the auth token is then "
+             "the only thing preventing remote root operations.",
+    )
     args = parser.parse_args()
 
     if os.geteuid() != 0:
         print("WARNING: Dashboard should run as root for full functionality")
 
-    print(f"Starting RTL8852AU WiFi Dashboard on http://{args.host}:{args.port}")
+    # Populate the Host-header whitelist used by before_request. Loopback
+    # names are always allowed; if the user bound to a non-loopback
+    # address we also accept that literal address and the machine's
+    # hostname (best-effort).
+    ALLOWED_HOSTS.update({"127.0.0.1", "localhost", "::1"})
+    if args.host not in ("127.0.0.1", "localhost"):
+        ALLOWED_HOSTS.add(args.host.lower())
+        try:
+            ALLOWED_HOSTS.add(socket.gethostname().lower())
+        except OSError:
+            pass
+        print()
+        print("=" * 64)
+        print(" WARNING: dashboard is bound to a non-loopback address.")
+        print(" Anyone reaching this host on the network needs the token")
+        print(" below to interact with /api/* endpoints. Keep it private.")
+        print("=" * 64)
+
+    print()
+    print(f" RTL8852AU Dashboard:  http://{args.host}:{args.port}/")
+    print(f" Auth token         :  {AUTH_TOKEN}")
+    print(f" Token file         :  {TOKEN_PATH}")
+    print( " Login              :  any username, password = the token above")
+    print()
+
     app.run(host=args.host, port=args.port, debug=False)
