@@ -22,7 +22,9 @@ import re
 import secrets
 import socket
 import subprocess
+import threading
 import time
+from collections import deque
 from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template_string, request
@@ -160,6 +162,40 @@ def read_sysfs(path):
         return None
 
 
+# \u2500\u2500 Metric history \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# Rolling ringbuffer of samples for the trend sparklines on the Overview
+# tab. We append one sample per /api/status call; with the default
+# 5-second client poll that gives 60 minutes of history (720 samples).
+# Capped on memory regardless of polling rate. Read by /api/history.
+METRIC_HISTORY = deque(maxlen=720)
+_HISTORY_LOCK = threading.Lock()
+
+
+def _parse_bitrate_mbps(s):
+    """Pull the leading float out of an `iw dev <iface> link` bitrate
+    string (e.g. '780.0 MBit/s'). Returns None when no match."""
+    if not s:
+        return None
+    m = re.match(r'\s*([0-9.]+)\s*MBit/s', s)
+    return float(m.group(1)) if m else None
+
+
+def _record_sample(payload):
+    """Append a single trend sample derived from the /api/status payload."""
+    conn = payload.get("connection") or {}
+    stats = payload.get("statistics") or {}
+    sample = {
+        "t": time.time(),
+        "signal": conn.get("signal_dbm"),
+        "bitrate": _parse_bitrate_mbps(conn.get("tx_bitrate")),
+        "tx_bytes": stats.get("tx_bytes", 0),
+        "rx_bytes": stats.get("rx_bytes", 0),
+        "errors": (stats.get("tx_errors", 0) or 0) + (stats.get("rx_errors", 0) or 0),
+    }
+    with _HISTORY_LOCK:
+        METRIC_HISTORY.append(sample)
+
+
 # ── API Endpoints ─────────────────────────────────────────────────────
 
 @app.route("/api/status")
@@ -222,7 +258,7 @@ def api_status():
         if m:
             ip_addr = m.group(1)
 
-    return jsonify({
+    payload = {
         "driver_loaded": True,
         "interface": iface,
         "mac_address": mac,
@@ -251,7 +287,16 @@ def api_status():
             "tx_dropped": int(tx_dropped),
             "rx_dropped": int(rx_dropped),
         }
-    })
+    }
+    _record_sample(payload)
+    return jsonify(payload)
+
+
+@app.route("/api/history")
+def api_history():
+    """Return the rolling buffer of trend samples (newest last)."""
+    with _HISTORY_LOCK:
+        return jsonify({"samples": list(METRIC_HISTORY)})
 
 
 @app.route("/api/scan")
@@ -703,71 +748,124 @@ DASHBOARD_HTML = """
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RTL8852AU WiFi Dashboard</title>
 <style>
+/* ── Theme tokens ────────────────────────────────────────────────── */
+:root[data-theme="dark"], :root:not([data-theme]) {
+    --bg-base: #0f172a;     --bg-card: #1e293b;   --bg-input: #0f172a;
+    --border:  #334155;     --border-strong: #475569;
+    --text:    #e2e8f0;     --text-muted: #94a3b8;  --text-dim: #64748b;
+    --accent:  #38bdf8;     --accent-hover: #1d4ed8;
+    --ok-bg:   #065f46;     --ok-fg: #6ee7b7;
+    --err-bg:  #7f1d1d;     --err-fg: #fca5a5;
+    --warn-bg: #78350f;     --warn-fg: #fde68a;     --warn-border: #92400e;
+    --row-border: #1e293b;  --tr-hover: #0f172a;
+    --header-gradient: linear-gradient(135deg, #1e293b, #334155);
+    --shadow: none;
+}
+:root[data-theme="light"] {
+    --bg-base: #f8fafc;     --bg-card: #ffffff;   --bg-input: #ffffff;
+    --border:  #e2e8f0;     --border-strong: #cbd5e1;
+    --text:    #0f172a;     --text-muted: #475569;  --text-dim: #94a3b8;
+    --accent:  #0284c7;     --accent-hover: #0369a1;
+    --ok-bg:   #d1fae5;     --ok-fg: #065f46;
+    --err-bg:  #fee2e2;     --err-fg: #991b1b;
+    --warn-bg: #fef3c7;     --warn-fg: #92400e;     --warn-border: #fcd34d;
+    --row-border: #f1f5f9;  --tr-hover: #f8fafc;
+    --header-gradient: linear-gradient(135deg, #e0f2fe, #bae6fd);
+    --shadow: 0 1px 3px rgba(15,23,42,0.08);
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-       background: #0f172a; color: #e2e8f0; min-height: 100vh; }
-.header { background: linear-gradient(135deg, #1e293b, #334155);
-           padding: 20px 30px; border-bottom: 1px solid #475569; display: flex;
-           justify-content: space-between; align-items: center; }
-.header h1 { font-size: 1.5rem; color: #38bdf8; }
+       background: var(--bg-base); color: var(--text); min-height: 100vh; }
+.header { background: var(--header-gradient);
+           padding: 20px 30px; border-bottom: 1px solid var(--border-strong); display: flex;
+           justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.header h1 { font-size: 1.5rem; color: var(--accent); }
 .header .status-badge { padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
-.badge-ok { background: #065f46; color: #6ee7b7; }
-.badge-err { background: #7f1d1d; color: #fca5a5; }
+.badge-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.badge-err { background: var(--err-bg); color: var(--err-fg); }
 .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; margin-bottom: 20px; }
-.card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
-.card h2 { font-size: 1.1rem; color: #94a3b8; margin-bottom: 16px; text-transform: uppercase;
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); }
+.card h2 { font-size: 1.1rem; color: var(--text-muted); margin-bottom: 16px; text-transform: uppercase;
             letter-spacing: 0.05em; font-weight: 600; }
 .info-row { display: flex; justify-content: space-between; padding: 8px 0;
-            border-bottom: 1px solid #1e293b; }
+            border-bottom: 1px solid var(--row-border); }
 .info-row:last-child { border-bottom: none; }
-.info-label { color: #64748b; font-size: 0.9rem; }
-.info-value { color: #e2e8f0; font-weight: 500; font-size: 0.9rem; }
+.info-label { color: var(--text-dim); font-size: 0.9rem; }
+.info-value { color: var(--text); font-weight: 500; font-size: 0.9rem; }
 .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-.stat-box { background: #0f172a; border-radius: 8px; padding: 14px; text-align: center; }
-.stat-value { font-size: 1.5rem; font-weight: 700; color: #38bdf8; }
-.stat-label { font-size: 0.75rem; color: #64748b; margin-top: 4px; text-transform: uppercase; }
-.signal-bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+.stat-box { background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 14px; text-align: center; }
+.stat-value { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+.stat-label { font-size: 0.75rem; color: var(--text-dim); margin-top: 4px; text-transform: uppercase; }
+.signal-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin-top: 8px; }
 .signal-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+/* Trend sparklines */
+.trend-row { display: grid; grid-template-columns: 140px 1fr 90px; align-items: center; gap: 10px;
+             padding: 8px 0; border-bottom: 1px solid var(--row-border); }
+.trend-row:last-child { border-bottom: none; }
+.trend-label { color: var(--text-dim); font-size: 0.85rem; }
+.trend-canvas { width: 100%; height: 36px; display: block; }
+.trend-value { color: var(--text); font-size: 0.9rem; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
 table { width: 100%; border-collapse: collapse; }
-table th { text-align: left; padding: 10px 12px; background: #0f172a; color: #64748b;
+table th { text-align: left; padding: 10px 12px; background: var(--bg-input); color: var(--text-dim);
            font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
-table td { padding: 10px 12px; border-bottom: 1px solid #1e293b; font-size: 0.9rem; }
-table tr:hover td { background: #0f172a; }
+table td { padding: 10px 12px; border-bottom: 1px solid var(--row-border); font-size: 0.9rem; }
+table tr:hover td { background: var(--tr-hover); }
 .btn { padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer;
        font-size: 0.9rem; font-weight: 600; transition: all 0.2s; }
 .btn-primary { background: #2563eb; color: white; }
-.btn-primary:hover { background: #1d4ed8; }
+.btn-primary:hover { background: var(--accent-hover); }
 .btn-danger { background: #dc2626; color: white; }
 .btn-danger:hover { background: #b91c1c; }
 .btn-success { background: #059669; color: white; }
 .btn-success:hover { background: #047857; }
 .btn-sm { padding: 5px 12px; font-size: 0.8rem; }
 .form-group { margin-bottom: 12px; }
-.form-group label { display: block; color: #94a3b8; font-size: 0.85rem; margin-bottom: 4px; }
-.form-group input, .form-group select { width: 100%; padding: 8px 12px; background: #0f172a;
-    border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.9rem; }
-.form-group input:focus { outline: none; border-color: #2563eb; }
+.form-group label { display: block; color: var(--text-muted); font-size: 0.85rem; margin-bottom: 4px; }
+.form-group input, .form-group select { width: 100%; padding: 8px 12px; background: var(--bg-input);
+    border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.9rem; }
+.form-group input:focus { outline: none; border-color: var(--accent); }
 .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; border-radius: 8px;
          color: white; font-weight: 500; z-index: 100; transition: opacity 0.3s; }
 .toast-ok { background: #059669; }
 .toast-err { background: #dc2626; }
-.actions { display: flex; gap: 10px; margin-top: 16px; }
-.tab-bar { display: flex; gap: 4px; margin-bottom: 20px; }
-.tab { padding: 10px 20px; background: #1e293b; border: 1px solid #334155; border-radius: 8px 8px 0 0;
-       cursor: pointer; color: #64748b; font-weight: 500; }
-.tab.active { background: #334155; color: #38bdf8; border-bottom-color: #334155; }
+.actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.tab-bar { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+.tab { padding: 10px 20px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px 8px 0 0;
+       cursor: pointer; color: var(--text-dim); font-weight: 500; }
+.tab.active { background: var(--border); color: var(--accent); border-bottom-color: var(--border); }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
-#test-output { background: #0f172a; padding: 16px; border-radius: 8px; font-family: monospace;
+#test-output { background: var(--bg-input); padding: 16px; border-radius: 8px; font-family: monospace;
                font-size: 0.85rem; white-space: pre-wrap; max-height: 500px; overflow-y: auto;
-               line-height: 1.6; }
-.test-pass { color: #6ee7b7; }
-.test-fail { color: #fca5a5; }
-.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #475569;
-           border-top-color: #38bdf8; border-radius: 50%; animation: spin 0.8s linear infinite; }
+               line-height: 1.6; color: var(--text); border: 1px solid var(--border); }
+.test-pass { color: #16a34a; }
+.test-fail { color: #dc2626; }
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border-strong);
+           border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Keyboard-help overlay */
+.kbd-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center;
+               justify-content: center; z-index: 200; }
+.kbd-overlay.open { display: flex; }
+.kbd-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px;
+             max-width: 420px; box-shadow: var(--shadow); color: var(--text); }
+.kbd-panel h3 { font-size: 1.1rem; margin-bottom: 14px; color: var(--accent); }
+.kbd-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.9rem; }
+.kbd { display: inline-block; background: var(--bg-input); border: 1px solid var(--border-strong); border-radius: 4px;
+       padding: 1px 6px; font-family: monospace; font-size: 0.8rem; color: var(--text); }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .adv-container { flex-direction: column; } .adv-sidebar { width: 100%; } }
+@media (max-width: 600px) {
+    .header { padding: 14px 16px; }
+    .header h1 { font-size: 1.15rem; }
+    .container { padding: 12px; }
+    .card { padding: 14px; }
+    .tab { padding: 8px 12px; font-size: 0.85rem; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .trend-row { grid-template-columns: 1fr; gap: 4px; }
+    .trend-value { text-align: left; }
+}
 /* Advanced tab - Windows Device Manager style */
 .adv-container { display: flex; gap: 16px; min-height: 520px; }
 .adv-sidebar { width: 270px; flex-shrink: 0; background: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden; }
@@ -814,12 +912,32 @@ table tr:hover td { background: #0f172a; }
 
 <div class="header">
     <h1>RTL8852AU WiFi Dashboard</h1>
-    <div style="display:flex;align-items:center;gap:14px;">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <div class="lang-switch">
+            <button class="lang-btn" data-theme-btn="dark" onclick="setTheme('dark')" title="Dark mode">●</button>
+            <button class="lang-btn" data-theme-btn="light" onclick="setTheme('light')" title="Light mode">○</button>
+        </div>
         <div class="lang-switch">
             <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
             <button class="lang-btn" data-lang="nl" onclick="setLanguage('nl')">NL</button>
         </div>
         <span id="status-badge" class="status-badge badge-ok" data-i18n="status.loading">Loading...</span>
+    </div>
+</div>
+
+<div class="kbd-overlay" id="kbd-overlay" onclick="if(event.target===this)toggleKbdHelp()">
+    <div class="kbd-panel">
+        <h3 data-i18n="kbd.title">Keyboard shortcuts</h3>
+        <div class="kbd-row"><span data-i18n="kbd.tab1">Overview tab</span><span><kbd class="kbd">1</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.tab2">Networks tab</span><span><kbd class="kbd">2</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.tab3">Settings tab</span><span><kbd class="kbd">3</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.tab4">Tests tab</span><span><kbd class="kbd">4</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.tab5">Advanced tab</span><span><kbd class="kbd">5</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.scan">Scan networks</span><span><kbd class="kbd">/</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.refresh">Refresh status</span><span><kbd class="kbd">r</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.theme">Toggle theme</span><span><kbd class="kbd">t</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.lang">Toggle language</span><span><kbd class="kbd">l</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.help">Show this help</span><span><kbd class="kbd">?</kbd></span></div>
     </div>
 </div>
 
@@ -850,6 +968,15 @@ table tr:hover td { background: #0f172a; }
             <div class="card">
                 <h2 data-i18n="card.driver">Driver Info</h2>
                 <div id="driver-info" data-i18n="status.loading">Loading...</div>
+            </div>
+            <div class="card" style="grid-column: 1 / -1;">
+                <h2 data-i18n="card.trends">Trends (last 60 min)</h2>
+                <div id="trends-info">
+                    <div class="trend-row"><span class="trend-label" data-i18n="trend.signal">Signal</span><canvas class="trend-canvas" id="trend-signal"></canvas><span class="trend-value" id="trend-signal-val">–</span></div>
+                    <div class="trend-row"><span class="trend-label" data-i18n="trend.bitrate">TX bitrate</span><canvas class="trend-canvas" id="trend-bitrate"></canvas><span class="trend-value" id="trend-bitrate-val">–</span></div>
+                    <div class="trend-row"><span class="trend-label" data-i18n="trend.throughput">RX throughput</span><canvas class="trend-canvas" id="trend-throughput"></canvas><span class="trend-value" id="trend-throughput-val">–</span></div>
+                    <div class="trend-row"><span class="trend-label" data-i18n="trend.errors">Errors (Δ)</span><canvas class="trend-canvas" id="trend-errors"></canvas><span class="trend-value" id="trend-errors-val">–</span></div>
+                </div>
             </div>
         </div>
     </div>
@@ -1056,6 +1183,18 @@ const I18N = {
         'adv.cat.antenna': 'Antenna & Beamforming',
         'adv.cat.roaming': 'Roaming & Connection',
         'adv.cat.debug': 'Debug & Advanced',
+        'card.trends': 'Trends (last 60 min)',
+        'trend.signal': 'Signal',
+        'trend.bitrate': 'TX bitrate',
+        'trend.throughput': 'RX throughput',
+        'trend.errors': 'Errors (Δ)',
+        'trend.nodata': 'no data yet',
+        'kbd.title': 'Keyboard shortcuts',
+        'kbd.tab1': 'Overview tab', 'kbd.tab2': 'Networks tab',
+        'kbd.tab3': 'Settings tab', 'kbd.tab4': 'Tests tab',
+        'kbd.tab5': 'Advanced tab', 'kbd.scan': 'Scan networks',
+        'kbd.refresh': 'Refresh status', 'kbd.theme': 'Toggle theme',
+        'kbd.lang': 'Toggle language', 'kbd.help': 'Show this help',
     },
     nl: {
         'status.loading': 'Laden...',
@@ -1154,11 +1293,24 @@ const I18N = {
         'adv.cat.antenna': 'Antenne & Beamforming',
         'adv.cat.roaming': 'Roaming & Verbinding',
         'adv.cat.debug': 'Debug & Geavanceerd',
+        'card.trends': 'Trends (laatste 60 min)',
+        'trend.signal': 'Signaal',
+        'trend.bitrate': 'TX bitrate',
+        'trend.throughput': 'RX doorvoer',
+        'trend.errors': 'Fouten (Δ)',
+        'trend.nodata': 'nog geen data',
+        'kbd.title': 'Sneltoetsen',
+        'kbd.tab1': 'Overzicht-tab', 'kbd.tab2': 'Netwerken-tab',
+        'kbd.tab3': 'Instellingen-tab', 'kbd.tab4': 'Tests-tab',
+        'kbd.tab5': 'Geavanceerd-tab', 'kbd.scan': 'Netwerken scannen',
+        'kbd.refresh': 'Status verversen', 'kbd.theme': 'Thema wisselen',
+        'kbd.lang': 'Taal wisselen', 'kbd.help': 'Deze help tonen',
     }
 };
 
 let LANG = localStorage.getItem('rtw_lang')
         || (navigator.language && navigator.language.toLowerCase().startsWith('nl') ? 'nl' : 'en');
+let THEME = localStorage.getItem('rtw_theme') || 'dark';
 
 function t(k) { return (I18N[LANG] && I18N[LANG][k]) || I18N.en[k] || k; }
 
@@ -1170,8 +1322,11 @@ function applyTranslations() {
     document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
         el.placeholder = t(el.dataset.i18nPlaceholder);
     });
-    document.querySelectorAll('.lang-btn').forEach(b => {
+    document.querySelectorAll('.lang-btn[data-lang]').forEach(b => {
         b.classList.toggle('active', b.dataset.lang === LANG);
+    });
+    document.querySelectorAll('.lang-btn[data-theme-btn]').forEach(b => {
+        b.classList.toggle('active', b.dataset.themeBtn === THEME);
     });
 }
 
@@ -1180,8 +1335,6 @@ function setLanguage(lang) {
     LANG = lang;
     localStorage.setItem('rtw_lang', lang);
     applyTranslations();
-    // Re-render anything that was filled in via innerHTML so translated
-    // labels in the dynamic markup also update.
     refreshStatus();
     refreshDriverInfo();
     if (advLoaded) {
@@ -1192,7 +1345,143 @@ function setLanguage(lang) {
         }
         updatePendingBanner(Object.keys(advChanges).length > 0);
     }
+    drawAllTrends();
 }
+
+function setTheme(theme) {
+    if (theme !== 'light' && theme !== 'dark') return;
+    THEME = theme;
+    localStorage.setItem('rtw_theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
+    applyTranslations();
+    drawAllTrends();
+}
+
+function toggleKbdHelp() {
+    document.getElementById('kbd-overlay').classList.toggle('open');
+}
+
+document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const tabs = ['overview','networks','settings','tests','advanced'];
+    if (e.key >= '1' && e.key <= '5') { switchTab(tabs[+e.key - 1]); }
+    else if (e.key === '/') { e.preventDefault(); switchTab('networks'); doScan(); }
+    else if (e.key === 'r') { refreshStatus(); refreshDriverInfo(); refreshTrends(); }
+    else if (e.key === 't') { setTheme(THEME === 'dark' ? 'light' : 'dark'); }
+    else if (e.key === 'l') { setLanguage(LANG === 'en' ? 'nl' : 'en'); }
+    else if (e.key === '?' || (e.shiftKey && e.key === '/')) { toggleKbdHelp(); }
+    else if (e.key === 'Escape') { document.getElementById('kbd-overlay').classList.remove('open'); }
+});
+
+// ── Trend sparklines ───────────────────────────────────────────────────
+let TRENDS = { samples: [] };
+
+function themeColor(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function drawSparkline(canvas, values, opts) {
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(rect.width * dpr, 100);
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const w = rect.width, h = rect.height;
+    ctx.clearRect(0, 0, w, h);
+    const clean = values.filter(v => v !== null && v !== undefined && !Number.isNaN(v));
+    if (clean.length < 2) {
+        ctx.fillStyle = themeColor('--text-dim');
+        ctx.font = '11px sans-serif';
+        ctx.fillText(t('trend.nodata'), 4, h / 2 + 4);
+        return;
+    }
+    let min = Math.min(...clean), max = Math.max(...clean);
+    if (opts && opts.minClamp !== undefined) min = Math.min(min, opts.minClamp);
+    if (opts && opts.maxClamp !== undefined) max = Math.max(max, opts.maxClamp);
+    const range = (max - min) || 1;
+    const pad = 2;
+    const stepX = (w - 2 * pad) / Math.max(values.length - 1, 1);
+    // Fill under the line for nicer visual weight.
+    ctx.beginPath();
+    ctx.moveTo(pad, h - pad);
+    values.forEach((v, i) => {
+        if (v === null || v === undefined || Number.isNaN(v)) return;
+        const x = pad + i * stepX;
+        const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+        ctx.lineTo(x, y);
+    });
+    ctx.lineTo(w - pad, h - pad);
+    ctx.closePath();
+    ctx.fillStyle = (opts && opts.fill) || themeColor('--accent') + '22';
+    ctx.fill();
+    // Stroke on top.
+    ctx.beginPath();
+    let started = false;
+    values.forEach((v, i) => {
+        if (v === null || v === undefined || Number.isNaN(v)) return;
+        const x = pad + i * stepX;
+        const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+        if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+    });
+    ctx.strokeStyle = (opts && opts.stroke) || themeColor('--accent');
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+}
+
+function fmtBytesPerSec(bps) {
+    if (bps == null || Number.isNaN(bps)) return '–';
+    if (bps < 1024) return bps.toFixed(0) + ' B/s';
+    if (bps < 1024 * 1024) return (bps / 1024).toFixed(1) + ' KB/s';
+    return (bps / (1024 * 1024)).toFixed(2) + ' MB/s';
+}
+
+function drawAllTrends() {
+    const samples = TRENDS.samples || [];
+    const signals = samples.map(s => s.signal);
+    const bitrates = samples.map(s => s.bitrate);
+    // Throughput is the per-sample delta in rx_bytes / dt seconds.
+    const throughputs = samples.map((s, i) => {
+        if (i === 0) return null;
+        const dt = s.t - samples[i - 1].t;
+        if (dt <= 0) return null;
+        return (s.rx_bytes - samples[i - 1].rx_bytes) / dt;
+    });
+    const errorDeltas = samples.map((s, i) => {
+        if (i === 0) return 0;
+        return Math.max(0, s.errors - samples[i - 1].errors);
+    });
+
+    drawSparkline(document.getElementById('trend-signal'), signals, {});
+    drawSparkline(document.getElementById('trend-bitrate'), bitrates, {minClamp: 0});
+    drawSparkline(document.getElementById('trend-throughput'), throughputs, {minClamp: 0});
+    drawSparkline(document.getElementById('trend-errors'), errorDeltas,
+                  {minClamp: 0, stroke: '#dc2626', fill: '#dc262633'});
+
+    const last = samples[samples.length - 1] || {};
+    document.getElementById('trend-signal-val').textContent =
+        last.signal != null ? last.signal + ' dBm' : '–';
+    document.getElementById('trend-bitrate-val').textContent =
+        last.bitrate != null ? last.bitrate.toFixed(0) + ' Mbps' : '–';
+    const lastTp = throughputs[throughputs.length - 1];
+    document.getElementById('trend-throughput-val').textContent = fmtBytesPerSec(lastTp);
+    const recentErrors = errorDeltas.slice(-12).reduce((a, b) => a + b, 0);
+    document.getElementById('trend-errors-val').textContent = String(recentErrors);
+}
+
+async function refreshTrends() {
+    try {
+        const r = await fetch('/api/history');
+        const d = await r.json();
+        TRENDS = d;
+        drawAllTrends();
+    } catch (e) {
+        console.error('History fetch failed:', e);
+    }
+}
+window.addEventListener('resize', () => drawAllTrends());
 
 function formatBytes(b) {
     if (b < 1024) return b + ' B';
@@ -1814,10 +2103,12 @@ function updatePendingBanner(show) {
 }
 
 // ── Initial load and auto-refresh ───────────────────────────────────
+document.documentElement.setAttribute('data-theme', THEME);
 applyTranslations();
 refreshStatus();
 refreshDriverInfo();
-setInterval(refreshStatus, 5000);
+refreshTrends();
+setInterval(() => { refreshStatus(); refreshTrends(); }, 5000);
 </script>
 </body>
 </html>
