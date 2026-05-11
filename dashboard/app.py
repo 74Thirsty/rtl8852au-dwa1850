@@ -110,11 +110,32 @@ def _escape_wpa_string(value):
 
 
 def run(cmd, timeout=15):
+    """Run a command and return (rc, stdout, stderr).
+
+    Accepts either a list (preferred, executed directly without a shell)
+    or a string (legacy path via `shell=True`, kept for the few commands
+    that genuinely need pipes / redirects — none in this codebase anymore
+    but the path is retained so external callers don't break).
+
+    Using a list eliminates the shell-injection oppervlak completely:
+    even if a user-controlled string ends up in argv, the kernel sees it
+    as a single argument, not a shell command. Capture_output also lets
+    us drop the `2>/dev/null` redirects that used to be sprinkled around.
+    """
+    use_shell = isinstance(cmd, str)
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(
+            cmd,
+            shell=use_shell,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
         return r.returncode, r.stdout.strip(), r.stderr.strip()
     except subprocess.TimeoutExpired:
         return -1, "", "timeout"
+    except FileNotFoundError as exc:
+        return -1, "", f"{exc.filename}: not found"
 
 
 def get_wlan_interface():
@@ -174,7 +195,7 @@ def api_status():
     srcversion = read_sysfs(f"/sys/module/{MODULE_NAME}/srcversion") or "unknown"
 
     # Connection info from iw
-    rc, iw_out, _ = run(f"iw dev {iface} link")
+    rc, iw_out, _ = run(["iw", "dev", iface, "link"])
     connected_ssid = None
     signal_dbm = None
     freq = None
@@ -194,7 +215,7 @@ def api_status():
             bitrate = m.group(1)
 
     # IP address
-    rc, ip_out, _ = run(f"ip -4 addr show {iface}")
+    rc, ip_out, _ = run(["ip", "-4", "addr", "show", iface])
     ip_addr = None
     if rc == 0:
         m = re.search(r'inet (\S+)', ip_out)
@@ -239,10 +260,10 @@ def api_scan():
     if not iface:
         return jsonify({"error": "No interface found"}), 404
 
-    run(f"ip link set {iface} up")
-    run(f"iw dev {iface} scan trigger")
+    run(["ip", "link", "set", iface, "up"])
+    run(["iw", "dev", iface, "scan", "trigger"])
     time.sleep(4)
-    rc, out, err = run(f"iw dev {iface} scan dump", timeout=20)
+    rc, out, err = run(["iw", "dev", iface, "scan", "dump"], timeout=20)
     if rc != 0:
         return jsonify({"error": f"Scan failed: {err}"}), 500
 
@@ -317,17 +338,18 @@ def api_connect():
     with os.fdopen(fd, "w") as f:
         f.write(f'ctrl_interface=/var/run/wpa_supplicant\nupdate_config=1\n\n{conf}')
 
-    run("killall -9 wpa_supplicant 2>/dev/null; sleep 1")
-    run(f"ip link set {iface} up")
+    run(["killall", "-9", "wpa_supplicant"])
+    time.sleep(1)
+    run(["ip", "link", "set", iface, "up"])
 
     # Discard stderr from wpa_supplicant — it can echo the passphrase on
     # failure paths (e.g. "Line N: invalid PSK 'mypass123'").
-    rc, _, _ = run(f"wpa_supplicant -B -i {iface} -c {conf_path}", timeout=10)
+    rc, _, _ = run(["wpa_supplicant", "-B", "-i", iface, "-c", conf_path], timeout=10)
     if rc != 0:
         return jsonify({"error": "wpa_supplicant failed to start"}), 500
 
-    run(f"dhclient -r {iface} 2>/dev/null")
-    rc, _, _ = run(f"dhclient {iface}", timeout=30)
+    run(["dhclient", "-r", iface])
+    rc, _, _ = run(["dhclient", iface], timeout=30)
     if rc != 0:
         return jsonify({"warning": "Connected but DHCP failed", "ssid": ssid})
 
@@ -341,15 +363,15 @@ def api_disconnect():
     if not iface:
         return jsonify({"error": "No interface found"}), 404
 
-    run(f"iw dev {iface} disconnect")
-    run("killall wpa_supplicant 2>/dev/null")
-    run(f"dhclient -r {iface} 2>/dev/null")
+    run(["iw", "dev", iface, "disconnect"])
+    run(["killall", "wpa_supplicant"])
+    run(["dhclient", "-r", iface])
     return jsonify({"success": True})
 
 
 @app.route("/api/driver")
 def api_driver():
-    rc, modinfo, _ = run(f"modinfo {MODULE_NAME}")
+    rc, modinfo, _ = run(["modinfo", MODULE_NAME])
     info = {}
     if rc == 0:
         for line in modinfo.split('\n'):
@@ -389,18 +411,18 @@ def api_ifconfig():
     if "mtu" in data:
         mtu = int(data["mtu"])
         if 576 <= mtu <= 9000:
-            rc, _, err = run(f"ip link set {iface} mtu {mtu}")
+            rc, _, err = run(["ip", "link", "set", iface, "mtu", str(mtu)])
             results.append({"mtu": "ok" if rc == 0 else err})
 
     if "txpower" in data:
         txp = int(data["txpower"])
         if 0 <= txp <= 30:
-            rc, _, err = run(f"iw dev {iface} set txpower fixed {txp * 100}")
+            rc, _, err = run(["iw", "dev", iface, "set", "txpower", "fixed", str(txp * 100)])
             results.append({"txpower": "ok" if rc == 0 else err})
 
     if "power_save" in data:
         ps = "on" if data["power_save"] else "off"
-        rc, _, err = run(f"iw dev {iface} set power_save {ps}")
+        rc, _, err = run(["iw", "dev", iface, "set", "power_save", ps])
         results.append({"power_save": "ok" if rc == 0 else err})
 
     return jsonify({"results": results})
@@ -414,7 +436,7 @@ def api_run_tests():
     if not os.path.exists(test_script):
         return jsonify({"error": "Test script not found"}), 404
 
-    rc, out, err = run(f"python3 {test_script}", timeout=120)
+    rc, out, err = run(["python3", test_script], timeout=120)
     report_path = os.path.join(os.path.dirname(test_script), "test_report.json")
     report = None
     if os.path.exists(report_path):
@@ -576,11 +598,11 @@ def api_advanced_save():
     if iface and "txpower" in live:
         txp = int(live["txpower"])
         if 0 <= txp <= 30:
-            rc, _, err = run(f"iw dev {iface} set txpower fixed {txp * 100}")
+            rc, _, err = run(["iw", "dev", iface, "set", "txpower", "fixed", str(txp * 100)])
             results.append({"txpower": "ok" if rc == 0 else err})
     if iface and "power_save" in live:
         ps = "on" if live["power_save"] else "off"
-        rc, _, err = run(f"iw dev {iface} set power_save {ps}")
+        rc, _, err = run(["iw", "dev", iface, "set", "power_save", ps])
         results.append({"power_save": "ok" if rc == 0 else err})
 
     # Persist module settings
@@ -624,17 +646,17 @@ def api_advanced_reload():
     warnings = []
 
     if iface:
-        rc, link_out, _ = run(f"iw dev {iface} link")
+        rc, link_out, _ = run(["iw", "dev", iface, "link"])
         if rc == 0 and "Connected" in link_out:
             warnings.append("Adapter was verbonden met een netwerk. Verbinding is verbroken.")
-        run(f"ip link set {iface} down")
-        run("killall wpa_supplicant 2>/dev/null")
-        run(f"dhclient -r {iface} 2>/dev/null")
+        run(["ip", "link", "set", iface, "down"])
+        run(["killall", "wpa_supplicant"])
+        run(["dhclient", "-r", iface])
         time.sleep(1)
 
-    rc, _, err = run(f"modprobe -r {MODULE_NAME}", timeout=10)
+    rc, _, err = run(["modprobe", "-r", MODULE_NAME], timeout=10)
     if rc != 0:
-        rc, _, err = run(f"rmmod {MODULE_NAME}", timeout=10)
+        rc, _, err = run(["rmmod", MODULE_NAME], timeout=10)
         if rc != 0:
             return jsonify({
                 "success": False,
@@ -644,7 +666,7 @@ def api_advanced_reload():
 
     time.sleep(2)
 
-    rc, _, err = run(f"modprobe {MODULE_NAME}", timeout=15)
+    rc, _, err = run(["modprobe", MODULE_NAME], timeout=15)
     if rc != 0:
         return jsonify({"success": False, "error": f"Kan module niet laden: {err}"}), 500
 
@@ -662,7 +684,7 @@ def api_advanced_reload():
             "warnings": warnings,
         })
 
-    run(f"ip link set {new_iface} up")
+    run(["ip", "link", "set", new_iface, "up"])
     return jsonify({
         "success": True,
         "interface": new_iface,
