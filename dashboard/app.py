@@ -1160,13 +1160,31 @@ def api_advanced_reload():
 
 
 
+def _static_version():
+    """Cheap cache-bust: append the highest mtime of style.css / app.js
+    as a query parameter on the <link> and <script> tags. Browsers see
+    a new URL whenever either asset is updated and skip the cached
+    copy."""
+    paths = [_DASHBOARD_ROOT / "static" / "style.css",
+             _DASHBOARD_ROOT / "static" / "app.js"]
+    try:
+        return int(max(p.stat().st_mtime for p in paths if p.exists()))
+    except (OSError, ValueError):
+        return 0
+
+
 @app.route("/")
 def index():
     # The dashboard markup lives in templates/index.html and pulls its
-    # CSS / JS from static/. Only the auth-token meta tag needs Jinja2
-    # interpolation; the JS file has plenty of `${…}` template literals
-    # that we deliberately keep out of the template engine's scope.
-    return render_template("index.html", auth_token=AUTH_TOKEN)
+    # CSS / JS from static/. The auth-token meta tag plus an mtime-based
+    # cache-bust are the only Jinja2 substitutions; the JS file has
+    # plenty of `${…}` template literals that we deliberately keep out
+    # of the template engine's scope.
+    return render_template(
+        "index.html",
+        auth_token=AUTH_TOKEN,
+        static_version=_static_version(),
+    )
 
 
 if __name__ == "__main__":

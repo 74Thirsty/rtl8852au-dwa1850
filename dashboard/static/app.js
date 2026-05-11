@@ -86,7 +86,7 @@ const I18N = {
         'adv.pickprop': 'Select a property to configure.',
         'adv.unavailable': 'Not available — this parameter is not compiled into the current module.',
         'adv.modulerestart': 'Module parameter — restart needed',
-        'adv.reloadconfirm': 'Reload module?\\n\\nThe WiFi connection will be briefly interrupted. The adapter will reinitialise with the saved settings.\\n\\nContinue?',
+        'adv.reloadconfirm': 'Reload module?\n\nThe WiFi connection will be briefly interrupted. The adapter will reinitialise with the saved settings.\n\nContinue?',
         'adv.pending_1': ' unsaved change. Click "Save & Apply" to save, then "Reload module" to activate.',
         'adv.pending_n': ' unsaved changes. Click "Save & Apply" to save, then "Reload module" to activate.',
         'adv.pending_saved': 'There are saved changes that require a module restart. Click "Reload module" to activate.',
@@ -236,7 +236,7 @@ const I18N = {
         'adv.pickprop': 'Selecteer een eigenschap om te configureren.',
         'adv.unavailable': 'Niet beschikbaar — deze parameter is niet gecompileerd in de huidige module.',
         'adv.modulerestart': 'Module parameter — herstart nodig',
-        'adv.reloadconfirm': 'Module herladen?\\n\\nDe WiFi-verbinding wordt tijdelijk verbroken. De adapter wordt opnieuw geïnitialiseerd met de opgeslagen instellingen.\\n\\nDoorgaan?',
+        'adv.reloadconfirm': 'Module herladen?\n\nDe WiFi-verbinding wordt tijdelijk verbroken. De adapter wordt opnieuw geïnitialiseerd met de opgeslagen instellingen.\n\nDoorgaan?',
         'adv.pending_1': ' onopgeslagen wijziging. Klik "Opslaan & Toepassen" om op te slaan, daarna "Module Herladen" om te activeren.',
         'adv.pending_n': ' onopgeslagen wijzigingen. Klik "Opslaan & Toepassen" om op te slaan, daarna "Module Herladen" om te activeren.',
         'adv.pending_saved': 'Er zijn opgeslagen wijzigingen die een module herstart vereisen. Klik "Module Herladen" om te activeren.',
@@ -846,7 +846,7 @@ async function doScan() {
                 </td>
                 <td>${n.frequency || '?'} MHz</td>
                 <td>${n.security}</td>
-                <td><button class="btn btn-success btn-sm" onclick="quickConnect('${n.ssid.replace(/'/g,"\\\\'")}')">${t('btn.quickconnect')}</button></td>
+                <td><button class="btn btn-success btn-sm" onclick="quickConnect('${n.ssid.replace(/'/g,"\\'")}')">${t('btn.quickconnect')}</button></td>
             </tr>`;
         }
         document.getElementById('network-list').innerHTML = html || `<tr><td colspan="6">${t('scan.none')}</td></tr>`;
@@ -926,7 +926,7 @@ async function runTests() {
 
         let html = '';
         if (d.output) {
-            html = d.output.replace(/\\.\\.\\.\\s*ok/g, '... <span class="test-pass">OK</span>')
+            html = d.output.replace(/\.\.\.\s*ok/g, '... <span class="test-pass">OK</span>')
                           .replace(/FAIL/g, '<span class="test-fail">FAIL</span>')
                           .replace(/ERROR/g, '<span class="test-fail">ERROR</span>');
         }
@@ -1136,7 +1136,7 @@ function renderAdvCategories() {
     let html = '';
     for (const [key, cat] of Object.entries(ADV_SETTINGS)) {
         html += '<div class="adv-cat' + (advSelectedCat === key ? ' active' : '') +
-                '" onclick="selectAdvCategory(\\''+key+'\\')">'+t(cat.labelKey)+'</div>';
+                '" onclick="selectAdvCategory(\''+key+'\')">'+t(cat.labelKey)+'</div>';
     }
     el.innerHTML = html;
 }
@@ -1157,7 +1157,7 @@ function renderAdvProperties(catKey) {
     for (const [pname, pdef] of Object.entries(cat.params)) {
         const modified = pname in advChanges;
         html += '<div class="adv-prop' + (advSelectedParam === pname ? ' active' : '') +
-                '" onclick="selectAdvParam(\\''+catKey+'\\',\\''+pname+'\\')">' +
+                '" onclick="selectAdvParam(\''+catKey+'\',\''+pname+'\')">' +
                 '<span>'+L(pdef)+'</span>' +
                 (modified ? '<span class="adv-modified-dot"></span>' : '') +
                 '</div>';
@@ -1189,13 +1189,13 @@ function renderAdvEditor(catKey, pname) {
     let inputHtml = '';
     const serverOpts = getParamOptions(pname);
     if (serverOpts) {
-        inputHtml = '<select onchange="advValueChanged(\\''+pname+'\\', this.value)">';
+        inputHtml = '<select onchange="advValueChanged(\''+pname+'\', this.value)">';
         for (const [val, optKey] of Object.entries(serverOpts)) {
             inputHtml += '<option value="'+val+'"'+(String(currentVal)===val?' selected':'')+'>'+t(optKey)+' ('+val+')</option>';
         }
         inputHtml += '</select>';
     } else {
-        inputHtml = '<input type="text" value="'+(currentVal!==null?currentVal:'')+'" onchange="advValueChanged(\\''+pname+'\\', this.value)">';
+        inputHtml = '<input type="text" value="'+(currentVal!==null?currentVal:'')+'" onchange="advValueChanged(\''+pname+'\', this.value)">';
     }
 
     const pendingVal = paramData.pending;
