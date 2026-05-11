@@ -242,28 +242,38 @@ sudo aireplay-ng -9 wlan1mon
 
 This driver supports USB adapters based on the **RTL8852AU** and **RTL8832AU** chipsets.
 
-| USB ID | Device | Chipset | Tested |
-|---|---|---|---|
-| `0bda:885a` | Realtek RTL8852AU (reference) | RTL8852AU | Yes |
-| `0bda:a]85c` | Realtek RTL8832AU (reference) | RTL8832AU | Yes |
-| `0bda:885c` | Realtek RTL8852AU (alternate) | RTL8852AU | Yes |
-| `2604:0012` | Tenda U18a AX1800 | RTL8832AU | Yes |
-| `0e8d:0608` | MediaTek-branded RTL8852AU | RTL8852AU | Yes |
-| `2357:012e` | TP-Link Archer TX20U Nano | RTL8852AU | Yes |
-| `2357:012f` | TP-Link Archer TX20U Plus | RTL8852AU | Yes |
-| `3625:010f` | TP-Link Archer TX35U Plus | RTL8852AU | Yes |
-| `0b05:1a62` | ASUS USB-AX56 (No Cradle) | RTL8832AU | Yes |
-| `13b1:0465` | Linksys WUSB6400M v2 | RTL8852AU | Reported |
-| `0846:9060` | NETGEAR A8000 | RTL8852AU | Reported |
-| `04ca:4611` | Liteon RTL8852AU | RTL8852AU | Reported |
-| `07b8:c125` | Abocom RTL8852AU | RTL8852AU | Reported |
+The table below is generated from the USB ID list in
+[`os_dep/linux/usb_intf.c`](os_dep/linux/usb_intf.c). Status reflects what
+has actually been verified end-to-end:
 
-> **Your adapter not listed?** If it uses the RTL8852AU or RTL8832AU chipset, it should work. Check with `lsusb` and open an issue if needed.
+- **Tested** — driver binds, interface comes up, traffic flows.
+- **Recognised** — USB ID is in the driver but full end-to-end verification is pending.
+
+| USB ID | Device | Chipset | Status |
+|---|---|---|---|
+| `0bda:8832` | Realtek reference board | RTL8832AU | Recognised |
+| `0bda:885a` | Realtek reference board | RTL8852AU | Recognised |
+| `0bda:885c` | Realtek reference board (variant) | RTL8852AU | Recognised |
+| `0b05:1997` | ASUS USB-AX56 (variant) | RTL8852AU | Recognised |
+| `0b05:1a62` | ASUS USB-AX56 (no cradle) | RTL8832AU | Recognised |
+| `0411:0312` | Buffalo WI-U3-1200AX2(/N) | RTL8852AU | Recognised |
+| `2001:0141` | D-Link DWA-X1850 | RTL8852AU | Recognised |
+| `2001:3321` | D-Link DWA-X1850 (variant) | RTL8852AU | Recognised |
+| `35bc:0100` | TP-Link AX1800 (generic) | RTL8852AU | Recognised |
+| `2357:013f` | TP-Link Archer TX20U Plus | RTL8852AU | **Tested** |
+| `2357:0140` | TP-Link AX1800 (variant) | RTL8852AU | Recognised |
+| `2357:0141` | TP-Link AX1800 (variant) | RTL8852AU | Recognised |
+| `3625:010f` | TP-Link Archer TX35U Plus | RTL8852AU | Recognised (added via PR #3) |
+| `056e:4020` | Elecom WDC-X1201DU3 | RTL8852AU | Recognised |
+
+> **Your adapter not listed but uses the right chipset?** Open a [hardware support request](https://github.com/WimLee115/rtl8852au-build/issues/new?template=hardware_support.yml) with the `lsusb -v` output.
 
 ```bash
-# Check if your adapter is detected
-lsusb | grep -i realtek
-# Expected: Bus 00x Device 00x: ID 0bda:885a Realtek Semiconductor Corp.
+# Check whether your adapter is recognised
+lsusb | grep -iE "Realtek|TP-Link|D-Link|ASUS|Buffalo|Elecom"
+
+# Or look up the exact USB ID
+lsusb | awk '{print $6}'
 ```
 
 <img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
@@ -311,12 +321,20 @@ Every patch targets a specific compile error or warning on Kernel 6.18+. Patches
 | **11** | `class-create-api.patch` | `os_dep/linux/os_intfs.c` | 6.4+ | Update `class_create()` call — removed `owner` parameter in 6.4 |
 | **12** | `cfg80211-ch-switch.patch` | `os_dep/linux/ioctl_cfg80211.c` | 6.18+ | Update `cfg80211_ch_switch_notify()` — new argument order and `struct` changes |
 
-**Patch application order matters.** The Makefile applies them in order 01-12 during build. If you need to apply manually:
+**These 12 patches are already integrated into the source tree.** The baseline
+commit (`2be21aaa`) carries them. You do not need to apply them manually —
+running `make` on this fork compiles directly on a kernel-6.18+ system.
+
+**Post-baseline fixes** (bugfixes and hardware additions made *after* the
+baseline) are exported as standalone patch files under
+[`patches/`](patches/), generated with `git format-patch`. See
+[`patches/README.md`](patches/README.md) for the index. To apply them to a
+fresh checkout of the baseline:
 
 ```bash
+git checkout 2be21aaa
 for p in patches/*.patch; do
-  echo "Applying: $p"
-  patch -p1 < "$p"
+    git am "$p"   # or: patch -p1 < "$p"
 done
 ```
 
@@ -324,60 +342,83 @@ done
 
 ## Test Suite
 
-The test suite validates the driver across compile, load, and runtime stages.
+The test suite (`tests/test_driver.py`) is a Python `unittest` runner that
+verifies the driver on the running kernel against a connected adapter. Most
+tests require root because they touch the USB device, kernel module, and
+`dmesg`. A JSON report is written to `tests/test_report.json` after each
+run.
+
+> ⚠ **Safety:** The destructive classes (`TestModuleReload`, `TestStability`)
+> tear down the module and rapidly toggle the interface. They previously
+> triggered a hard kernel panic when run against an actively associated
+> system. They are **opt-in only** and the runner refuses to start them
+> while `NetworkManager` / `wpa_supplicant` is active or `wlanX` is
+> connected to an AP. Before enabling them:
+>
+> ```bash
+> sudo systemctl stop NetworkManager wpa_supplicant
+> sudo ip link set wlan0 down
+> ```
 
 ```bash
-# Run all tests
-sudo ./test/run_tests.sh
+# Safe default — runs everything except the two destructive classes
+sudo ./tests/run_tests.sh
 
-# Run specific test category
-sudo ./test/run_tests.sh --compile    # Compile tests only
-sudo ./test/run_tests.sh --load       # Module load/unload tests
-sudo ./test/run_tests.sh --injection  # Monitor mode + injection tests
-sudo ./test/run_tests.sh --dashboard  # Dashboard API tests
+# Run a category (forwards to a specific TestCase class)
+sudo ./tests/run_tests.sh --module        # module load + device binding (read-only)
+sudo ./tests/run_tests.sh --interface     # interface up/down, cfg80211 queries
+sudo ./tests/run_tests.sh --scan          # iw scan trigger + dump
+sudo ./tests/run_tests.sh --usb           # USB endpoint + speed check
+sudo ./tests/run_tests.sh --dmesg         # check for kernel errors
+
+# Destructive (opt-in — pre-flight will refuse if the system is unsafe)
+sudo ./tests/run_tests.sh --reload        # rmmod + insmod cycle
+sudo ./tests/run_tests.sh --stability     # rapid ifup/ifdown + repeated scans
+sudo ./tests/run_tests.sh --all           # everything, including destructive
+
+# Or filter freely with the unittest -k pattern
+sudo ./tests/run_tests.sh -k TestWiFiScan
+
+# List the available test classes
+./tests/run_tests.sh --list
 ```
 
-**Test categories:**
+**Test classes** (defined in `tests/test_driver.py`):
 
-| Category | Tests | Description |
-|---|---|---|
-| **Compile** | 5 | Clean build, DKMS build, incremental build, warnings check, cross-compile (arm64) |
-| **Module** | 4 | `modprobe` load, `rmmod` unload, `modinfo` metadata, repeated load/unload (10x) |
-| **Managed** | 3 | Interface up, DHCP acquisition, iperf3 throughput (expect >400 Mbps on 5 GHz) |
-| **Monitor** | 5 | Mode switch, channel set, injection test, packet capture, concurrent mode |
-| **Dashboard** | 4 | Flask startup, API endpoints, WebSocket stream, monitor mode toggle |
-| **Stress** | 2 | 24h soak test (managed mode), repeated mode switching (100x managed <-> monitor) |
-| **Total** | **23** | |
+| Class | Verifies |
+|---|---|
+| `TestModuleBasics` | `.ko` exists, `modinfo` reports correct vermagic, driver is registered in sysfs |
+| `TestDeviceBinding` | USB device is bound to driver, `wlan*` interface created, valid MAC + MTU |
+| `TestInterfaceUp` | Interface comes up cleanly, IFF_UP flag set, can be cycled down/up |
+| `TestWiFiScan` | `iw scan trigger` works, scan results contain at least one BSS, 2.4 + 5 GHz bands |
+| `TestCfg80211` | `iw dev info`, phy info with `Capabilities`, managed-mode supported, station dump |
+| `TestProcFS` | `/proc/net/rtw_*` entries exist (skipped if `CONFIG_PROC_DEBUG=n`) |
+| `TestUSBEndpoints` | USB speed ≥ 480 Mbps (USB 2.0 minimum), at least two endpoints present |
+| `TestDmesgClean` | No `error`/`bug`/`oops`/`panic` in dmesg for this driver |
+| `TestModuleReload` | **(destructive)** brings `wlanX` down, `rmmod` + `insmod` cycle, interface comes back |
+| `TestStability` | **(destructive)** 10×ifup/ifdown with 1.5s headroom + 5× scan triggers stay healthy |
 
-**Expected output:**
+**Expected output (abridged):**
 
 ```
-[PASS] compile/clean-build ................. OK (42s)
-[PASS] compile/dkms-build .................. OK (38s)
-[PASS] compile/incremental ................. OK (8s)
-[PASS] compile/warnings .................... OK (42s)
-[SKIP] compile/cross-arm64 ................. SKIP (no cross-compiler)
-[PASS] module/modprobe ..................... OK (2s)
-[PASS] module/rmmod ........................ OK (1s)
-[PASS] module/modinfo ...................... OK (1s)
-[PASS] module/repeated-load ................ OK (28s)
-[PASS] managed/interface-up ................ OK (3s)
-[PASS] managed/dhcp ........................ OK (5s)
-[PASS] managed/throughput .................. OK (12s) [847 Mbps]
-[PASS] monitor/mode-switch ................. OK (2s)
-[PASS] monitor/channel-set ................. OK (1s)
-[PASS] monitor/injection ................... OK (4s)
-[PASS] monitor/capture ..................... OK (3s)
-[PASS] monitor/concurrent .................. OK (5s)
-[PASS] dashboard/flask-start ............... OK (2s)
-[PASS] dashboard/api-endpoints ............. OK (3s)
-[PASS] dashboard/websocket ................. OK (2s)
-[PASS] dashboard/monitor-toggle ............ OK (4s)
-[SKIP] stress/24h-soak .................... SKIP (use --stress)
-[SKIP] stress/mode-switch-100x ............ SKIP (use --stress)
+$ sudo ./tests/run_tests.sh
+test_01_module_file_exists (TestModuleBasics) ... ok
+test_02_module_info (TestModuleBasics) ........... ok
+test_03_module_is_loaded (TestModuleBasics) ...... ok
+test_04_module_srcversion_matches (TestModuleBasics) ... ok
+test_05_driver_registered (TestModuleBasics) ..... ok
+...
+Ran 30 tests in 47.812s
+OK (skipped=1)
 
-21 passed, 0 failed, 2 skipped
+Report saved to: tests/test_report.json
+Total: 30 | Passed: 29 | Failed: 0 | Errors: 0 | Skipped: 1
 ```
+
+The 24h soak test, injection test, and dashboard endpoint tests live outside
+the unittest suite — they require external tooling (`iperf3`, `aireplay-ng`,
+a running Flask process) and are exercised by Fase 4 of the maintainer
+release checklist.
 
 <img src="https://i.imgur.com/dBaSKWF.gif" height="20" width="100%" >
 
@@ -385,6 +426,7 @@ sudo ./test/run_tests.sh --dashboard  # Dashboard API tests
 
 | Distribution | Kernel | Arch | Status |
 |---|---|---|---|
+| Kali Linux Rolling 2026.1 | 6.19.14+kali-amd64 | x86_64 | **Working** |
 | Kali Linux 2025.1 | 6.18.9-kali-amd64 | x86_64 | **Working** |
 | Kali Linux 2024.4 | 6.11.2-amd64 | x86_64 | **Working** |
 | Ubuntu 25.04 (Plucky) | 6.14.0-generic | x86_64 | **Working** |
