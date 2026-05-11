@@ -921,27 +921,49 @@ async function runTests() {
     document.getElementById('test-summary').textContent = '';
 
     try {
-        const r = await fetch('/api/tests/run', {method: 'POST'});
+        const r = await fetch('/api/tests/run', {
+            method: 'POST',
+            headers: {'Accept': 'application/json'},
+        });
+        if (!r.ok) {
+            throw new Error('HTTP ' + r.status + ' ' + r.statusText);
+        }
+        const ct = r.headers.get('content-type') || '';
+        if (!ct.includes('json')) {
+            throw new Error('Unexpected response type: ' + ct);
+        }
         const d = await r.json();
 
         let html = '';
         if (d.output) {
-            html = d.output.replace(/\.\.\.\s*ok/g, '... <span class="test-pass">OK</span>')
-                          .replace(/FAIL/g, '<span class="test-fail">FAIL</span>')
-                          .replace(/ERROR/g, '<span class="test-fail">ERROR</span>');
+            html = String(d.output)
+                .replace(/\.\.\.\s*ok/g, '... <span class="test-pass">OK</span>')
+                .replace(/FAIL/g, '<span class="test-fail">FAIL</span>')
+                .replace(/ERROR/g, '<span class="test-fail">ERROR</span>');
         }
         document.getElementById('test-output').innerHTML = html || d.stderr || t('tests.nooutput');
 
-        if (d.report) {
+        if (d.report && typeof d.report === 'object') {
             const rp = d.report;
-            const color = rp.failed === 0 && rp.errors === 0 ? '#6ee7b7' : '#fca5a5';
+            const ok = (rp.failed | 0) === 0 && (rp.errors | 0) === 0;
+            const color = ok ? '#6ee7b7' : '#fca5a5';
+            const passed  = rp.passed  != null ? rp.passed  : '?';
+            const total   = rp.total   != null ? rp.total   : '?';
+            const failed  = rp.failed  != null ? rp.failed  : 0;
+            const errors  = rp.errors  != null ? rp.errors  : 0;
+            const skipped = rp.skipped != null ? rp.skipped : 0;
             document.getElementById('test-summary').innerHTML =
                 `<span style="color:${color};font-size:1.1rem;font-weight:600;">` +
-                `${rp.passed}/${rp.total} ${t('tests.passed')}</span> | ` +
-                `${rp.failed} ${t('tests.failed')} | ${rp.errors} ${t('tests.errors')} | ${rp.skipped} ${t('tests.skipped')}`;
+                `${passed}/${total} ${t('tests.passed')}</span> | ` +
+                `${failed} ${t('tests.failed')} | ${errors} ${t('tests.errors')} | ${skipped} ${t('tests.skipped')}`;
         }
     } catch(e) {
-        document.getElementById('test-output').textContent = t('tests.error');
+        // Surface the actual error in the UI so it's diagnosable from the
+        // dashboard alone — the previous generic "Error running tests"
+        // turned every cause into one indistinguishable message.
+        console.error('runTests failed:', e);
+        document.getElementById('test-output').textContent =
+            t('tests.error') + ': ' + (e && e.message ? e.message : String(e));
     }
 
     btn.disabled = false;
