@@ -353,6 +353,17 @@ def api_history():
 # four extra seconds for an iw-scan-trigger when they switch sub-views.
 _LAST_SCAN = {"t": 0.0, "networks": []}
 
+# Monitor-mode state.
+#   _MONITOR_CAPTURE  — Popen handle for the running tcpdump, or None.
+#   _MONITOR_FRAMES   — rolling buffer of (timestamp, raw line) tuples.
+#   _MONITOR_PCAP     — path to the rotating pcap file used by the
+#                        export endpoint. Written to /tmp so it's
+#                        tmpfs and disappears on reboot.
+_MONITOR_LOCK = threading.Lock()
+_MONITOR_CAPTURE = None
+_MONITOR_FRAMES = deque(maxlen=200)
+_MONITOR_PCAP = "/tmp/rtw_monitor.pcap"
+
 
 def _freq_to_channel(freq):
     if freq is None:
@@ -421,6 +432,245 @@ def api_spectrum():
         "total_aps": len(networks),
         "scanned_at": _LAST_SCAN["t"],
     })
+
+
+# ── Monitor mode ───────────────────────────────────────────────────────
+
+# 2.4 GHz channels (1-13 worldwide, 14 only legal in JP) and the common
+# 5 GHz channels supported by the RTL8852AU. The driver / regulatory
+# domain may refuse some of these; the front-end only offers them as a
+# starting list and the user can type a free-form value.
+MONITOR_CHANNELS_24 = list(range(1, 15))
+MONITOR_CHANNELS_5 = [36, 40, 44, 48, 52, 56, 60, 64,
+                      100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144,
+                      149, 153, 157, 161, 165]
+
+
+def _monitor_iface_info(iface):
+    """Return (type, channel) for the interface; both may be None."""
+    rc, info, _ = run(["iw", "dev", iface, "info"])
+    if rc != 0:
+        return None, None
+    iface_type = None
+    channel = None
+    m = re.search(r'type (\S+)', info)
+    if m:
+        iface_type = m.group(1)
+    m = re.search(r'channel (\d+)', info)
+    if m:
+        channel = int(m.group(1))
+    return iface_type, channel
+
+
+@app.route("/api/monitor/status")
+def api_monitor_status():
+    iface = get_wlan_interface()
+    if not iface:
+        return jsonify({"error": "No interface found"}), 404
+    iface_type, channel = _monitor_iface_info(iface)
+    with _MONITOR_LOCK:
+        capturing = _MONITOR_CAPTURE is not None and _MONITOR_CAPTURE.poll() is None
+        frame_count = len(_MONITOR_FRAMES)
+    return jsonify({
+        "interface": iface,
+        "type": iface_type,
+        "channel": channel,
+        "capturing": capturing,
+        "frame_count": frame_count,
+        "channels_24": MONITOR_CHANNELS_24,
+        "channels_5": MONITOR_CHANNELS_5,
+        "pcap_available": os.path.isfile(_MONITOR_PCAP),
+    })
+
+
+@app.route("/api/monitor/enable", methods=["POST"])
+def api_monitor_enable():
+    iface = get_wlan_interface()
+    if not iface:
+        return jsonify({"error": "No interface found"}), 404
+    data = request.get_json(silent=True) or {}
+    channel = data.get("channel")
+
+    run(["ip", "link", "set", iface, "down"])
+    rc, _, err = run(["iw", "dev", iface, "set", "type", "monitor"])
+    run(["ip", "link", "set", iface, "up"])
+    if rc != 0:
+        return jsonify({"error": "Failed to enter monitor mode",
+                        "hint": "Stop NetworkManager / wpa_supplicant for this "
+                                "interface first.", "details": err}), 500
+
+    if channel is not None:
+        try:
+            run(["iw", "dev", iface, "set", "channel", str(int(channel))])
+        except (ValueError, TypeError):
+            pass
+
+    iface_type, ch = _monitor_iface_info(iface)
+    return jsonify({"success": True, "type": iface_type, "channel": ch})
+
+
+@app.route("/api/monitor/disable", methods=["POST"])
+def api_monitor_disable():
+    global _MONITOR_CAPTURE
+    iface = get_wlan_interface()
+    if not iface:
+        return jsonify({"error": "No interface found"}), 404
+
+    with _MONITOR_LOCK:
+        if _MONITOR_CAPTURE is not None:
+            try:
+                _MONITOR_CAPTURE.terminate()
+                _MONITOR_CAPTURE.wait(timeout=2)
+            except (subprocess.TimeoutExpired, OSError):
+                try:
+                    _MONITOR_CAPTURE.kill()
+                except OSError:
+                    pass
+            _MONITOR_CAPTURE = None
+
+    run(["ip", "link", "set", iface, "down"])
+    rc, _, err = run(["iw", "dev", iface, "set", "type", "managed"])
+    run(["ip", "link", "set", iface, "up"])
+    if rc != 0:
+        return jsonify({"error": "Failed to leave monitor mode",
+                        "details": err}), 500
+    return jsonify({"success": True})
+
+
+@app.route("/api/monitor/channel", methods=["POST"])
+def api_monitor_channel():
+    iface = get_wlan_interface()
+    if not iface:
+        return jsonify({"error": "No interface found"}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        ch_int = int(data.get("channel"))
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid channel"}), 400
+    if not (1 <= ch_int <= 200):
+        return jsonify({"error": "Channel out of range"}), 400
+    rc, _, err = run(["iw", "dev", iface, "set", "channel", str(ch_int)])
+    if rc != 0:
+        return jsonify({"error": err or "Channel change rejected"}), 500
+    return jsonify({"success": True, "channel": ch_int})
+
+
+def _parse_frame_line(line):
+    """Pull a handful of useful fields out of a tcpdump line for the
+    monitor-mode table. tcpdump's text output is loose, so we just look
+    for the patterns we care about and fall back to the raw line."""
+    info = {"raw": line.strip(), "t": time.time()}
+    m = re.search(r'\b(?:Beacon|Probe Request|Probe Response|Authentication|'
+                  r'Association Request|Association Response|Deauthentication|'
+                  r'Disassociation|ACK|RTS|CTS|Data|QoS Data)\b', line)
+    if m:
+        info["type"] = m.group(0)
+    m = re.search(r'SA:([0-9a-f:]{17})', line)
+    if m:
+        info["src"] = m.group(1)
+    m = re.search(r'DA:([0-9a-f:]{17})', line)
+    if m:
+        info["dst"] = m.group(1)
+    m = re.search(r'\(([^)]+)\)', line)
+    if m and "type" in info and info["type"] in ("Beacon", "Probe Request", "Probe Response"):
+        info["ssid"] = m.group(1)
+    m = re.search(r'(-?\d+)dBm', line)
+    if m:
+        info["rssi"] = int(m.group(1))
+    return info
+
+
+def _capture_reader(proc):
+    """Background thread: pump tcpdump lines into the rolling buffer."""
+    try:
+        for line in proc.stdout:
+            if not line:
+                continue
+            with _MONITOR_LOCK:
+                _MONITOR_FRAMES.append(_parse_frame_line(line))
+    except Exception:
+        pass
+
+
+@app.route("/api/monitor/capture/start", methods=["POST"])
+def api_monitor_capture_start():
+    global _MONITOR_CAPTURE
+    iface = get_wlan_interface()
+    if not iface:
+        return jsonify({"error": "No interface found"}), 404
+    iface_type, _ = _monitor_iface_info(iface)
+    if iface_type != "monitor":
+        return jsonify({"error": "Interface is not in monitor mode"}), 400
+
+    with _MONITOR_LOCK:
+        if _MONITOR_CAPTURE is not None and _MONITOR_CAPTURE.poll() is None:
+            return jsonify({"error": "Capture already running"}), 400
+        _MONITOR_FRAMES.clear()
+
+    # Two parallel tcpdumps:
+    #   - one writes a pcap to disk for the user to export later
+    #   - one prints text lines we parse for the live frame table
+    # Spawning a single tcpdump with both `-w` and stdout-text isn't
+    # supported, so we just run the disk-writer separately. The text
+    # capture is what backs the buffer.
+    try:
+        subprocess.Popen(
+            ["tcpdump", "-i", iface, "-n", "-U", "-w", _MONITOR_PCAP, "-G", "0"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return jsonify({"error": "tcpdump not installed"}), 500
+
+    try:
+        proc = subprocess.Popen(
+            ["tcpdump", "-i", iface, "-n", "-e", "-l", "-Q", "in"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, bufsize=1,
+        )
+    except FileNotFoundError:
+        return jsonify({"error": "tcpdump not installed"}), 500
+
+    threading.Thread(target=_capture_reader, args=(proc,), daemon=True).start()
+    with _MONITOR_LOCK:
+        _MONITOR_CAPTURE = proc
+    return jsonify({"success": True})
+
+
+@app.route("/api/monitor/capture/stop", methods=["POST"])
+def api_monitor_capture_stop():
+    global _MONITOR_CAPTURE
+    # Also stop the disk-writer tcpdump.
+    run(["pkill", "-f", f"tcpdump.*-w {_MONITOR_PCAP}"])
+    with _MONITOR_LOCK:
+        if _MONITOR_CAPTURE is not None:
+            try:
+                _MONITOR_CAPTURE.terminate()
+                _MONITOR_CAPTURE.wait(timeout=2)
+            except (subprocess.TimeoutExpired, OSError):
+                try:
+                    _MONITOR_CAPTURE.kill()
+                except OSError:
+                    pass
+        _MONITOR_CAPTURE = None
+    return jsonify({"success": True})
+
+
+@app.route("/api/monitor/frames")
+def api_monitor_frames():
+    with _MONITOR_LOCK:
+        return jsonify({"frames": list(_MONITOR_FRAMES),
+                        "count": len(_MONITOR_FRAMES)})
+
+
+@app.route("/api/monitor/pcap")
+def api_monitor_pcap():
+    """Stream the saved pcap so the user can open it in Wireshark."""
+    from flask import send_file
+    if not os.path.isfile(_MONITOR_PCAP):
+        return jsonify({"error": "No capture file available"}), 404
+    return send_file(_MONITOR_PCAP, as_attachment=True,
+                     download_name="rtw_monitor.pcap",
+                     mimetype="application/vnd.tcpdump.pcap")
 
 
 def _parse_scan(out):
@@ -1134,6 +1384,7 @@ table tr:hover td { background: var(--tr-hover); }
     <div class="tab-bar">
         <div class="tab active" onclick="switchTab('overview')" data-tab="overview" data-i18n="tab.overview">Overview</div>
         <div class="tab" onclick="switchTab('networks')" data-tab="networks" data-i18n="tab.networks">Networks</div>
+        <div class="tab" onclick="switchTab('monitor')" data-tab="monitor" data-i18n="tab.monitor">Monitor</div>
         <div class="tab" onclick="switchTab('settings')" data-tab="settings" data-i18n="tab.settings">Settings</div>
         <div class="tab" onclick="switchTab('tests')" data-tab="tests" data-i18n="tab.tests">Tests</div>
         <div class="tab" onclick="switchTab('advanced')" data-tab="advanced" data-i18n="tab.advanced">Advanced</div>
@@ -1218,6 +1469,79 @@ table tr:hover td { background: var(--tr-hover); }
             <div class="actions">
                 <button class="btn btn-success" onclick="doConnect()" data-i18n="btn.connect">Connect</button>
                 <button class="btn btn-danger" onclick="doDisconnect()" data-i18n="btn.disconnect">Disconnect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monitor Tab -->
+    <div id="tab-monitor" class="tab-content">
+        <div class="card">
+            <h2 data-i18n="card.monitor">Monitor mode</h2>
+            <div id="monitor-warning" style="background: var(--warn-bg); color: var(--warn-fg);
+                border: 1px solid var(--warn-border); border-radius: 8px; padding: 12px;
+                margin-bottom: 14px; font-size: 0.85rem;" data-i18n="monitor.warning">
+                Monitor mode requires the interface to be unmanaged by NetworkManager / wpa_supplicant.
+                Run: sudo nmcli device set wlanX managed no  &amp;&amp;  sudo systemctl stop wpa_supplicant
+            </div>
+            <div class="info-row">
+                <span class="info-label" data-i18n="monitor.iface">Interface</span>
+                <span class="info-value" id="mon-iface">–</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label" data-i18n="monitor.mode">Mode</span>
+                <span class="info-value" id="mon-mode">–</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label" data-i18n="monitor.channel">Channel</span>
+                <span class="info-value" id="mon-channel">–</span>
+            </div>
+            <div class="actions" style="margin-top: 14px;">
+                <button class="btn btn-success" onclick="monitorEnable()" data-i18n="monitor.enable">Enable monitor</button>
+                <button class="btn btn-danger" onclick="monitorDisable()" data-i18n="monitor.disable">Back to managed</button>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <h2 data-i18n="card.channelpicker">Channel selection</h2>
+            <div class="form-group">
+                <label data-i18n="monitor.channelpick">Channel</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="mon-channel-select" style="flex: 1;">
+                        <option value="">--</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="monitorSetChannel()" data-i18n="btn.apply">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <h2><span data-i18n="card.capture">Frame capture</span>
+                <span id="capture-stats" style="float: right; font-size: 0.85rem; color: var(--text-dim); font-weight: normal;"></span>
+            </h2>
+            <div class="actions">
+                <button class="btn btn-success" onclick="captureStart()" id="btn-capture-start" data-i18n="btn.capture_start">Start capture</button>
+                <button class="btn btn-danger" onclick="captureStop()" id="btn-capture-stop" data-i18n="btn.capture_stop" disabled>Stop capture</button>
+                <button class="btn btn-outline" onclick="downloadPcap()" id="btn-pcap" data-i18n="btn.pcap" disabled>Download .pcap</button>
+            </div>
+            <div class="form-group" style="margin-top: 14px;">
+                <input type="text" id="frame-filter" data-i18n-placeholder="ph.framefilter" placeholder="Filter (e.g. Beacon, Probe)" oninput="renderFrames()">
+            </div>
+            <div style="max-height: 480px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th data-i18n="frame.time">Time</th>
+                            <th data-i18n="frame.type">Type</th>
+                            <th data-i18n="frame.src">Source</th>
+                            <th data-i18n="frame.dst">Dest</th>
+                            <th data-i18n="frame.ssid">SSID</th>
+                            <th data-i18n="frame.rssi">RSSI</th>
+                        </tr>
+                    </thead>
+                    <tbody id="frame-list">
+                        <tr><td colspan="6" data-i18n="frame.empty">Start a capture to see frames here.</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -1412,6 +1736,38 @@ const I18N = {
         'spectrum.ch5': '(channels 36–165)',
         'spectrum.nodata': 'no scan data yet',
         'spectrum.summary': 'aps across {n} channels',
+        'tab.monitor': 'Monitor',
+        'card.monitor': 'Monitor mode',
+        'card.channelpicker': 'Channel selection',
+        'card.capture': 'Frame capture',
+        'monitor.warning': 'Monitor mode requires the interface to be unmanaged by NetworkManager / wpa_supplicant. Run:  sudo nmcli device set wlanX managed no  &&  sudo systemctl stop wpa_supplicant',
+        'monitor.iface': 'Interface',
+        'monitor.mode': 'Mode',
+        'monitor.channel': 'Channel',
+        'monitor.enable': 'Enable monitor',
+        'monitor.disable': 'Back to managed',
+        'monitor.channelpick': 'Channel',
+        'btn.capture_start': 'Start capture',
+        'btn.capture_stop': 'Stop capture',
+        'btn.pcap': 'Download .pcap',
+        'ph.framefilter': 'Filter (e.g. Beacon, Probe)',
+        'frame.time': 'Time',
+        'frame.type': 'Type',
+        'frame.src': 'Source',
+        'frame.dst': 'Dest',
+        'frame.ssid': 'SSID',
+        'frame.rssi': 'RSSI',
+        'frame.empty': 'Start a capture to see frames here.',
+        'frame.nomatch': 'No frames matched the filter.',
+        'monitor.cap_running': 'capturing — {n} frames',
+        'monitor.cap_stopped': '{n} frames captured',
+        'toast.mon_enabled': 'Monitor mode active',
+        'toast.mon_disabled': 'Back to managed mode',
+        'toast.mon_fail': 'Failed to switch mode — check NetworkManager / wpa_supplicant',
+        'toast.cap_started': 'Capture started',
+        'toast.cap_stopped': 'Capture stopped',
+        'toast.ch_set': 'Channel set to {n}',
+        'toast.ch_fail': 'Channel change rejected',
     },
     nl: {
         'status.loading': 'Laden...',
@@ -1530,6 +1886,38 @@ const I18N = {
         'spectrum.ch5': '(kanalen 36–165)',
         'spectrum.nodata': 'nog geen scan-data',
         'spectrum.summary': 'APs verdeeld over {n} kanalen',
+        'tab.monitor': 'Monitor',
+        'card.monitor': 'Monitor-modus',
+        'card.channelpicker': 'Kanaal-keuze',
+        'card.capture': 'Frame-capture',
+        'monitor.warning': 'Monitor-modus vereist dat de interface niet door NetworkManager / wpa_supplicant wordt beheerd. Draai:  sudo nmcli device set wlanX managed no  &&  sudo systemctl stop wpa_supplicant',
+        'monitor.iface': 'Interface',
+        'monitor.mode': 'Modus',
+        'monitor.channel': 'Kanaal',
+        'monitor.enable': 'Monitor inschakelen',
+        'monitor.disable': 'Terug naar managed',
+        'monitor.channelpick': 'Kanaal',
+        'btn.capture_start': 'Capture starten',
+        'btn.capture_stop': 'Capture stoppen',
+        'btn.pcap': '.pcap downloaden',
+        'ph.framefilter': 'Filter (bijv. Beacon, Probe)',
+        'frame.time': 'Tijd',
+        'frame.type': 'Type',
+        'frame.src': 'Bron',
+        'frame.dst': 'Bestemming',
+        'frame.ssid': 'SSID',
+        'frame.rssi': 'RSSI',
+        'frame.empty': 'Start een capture om hier frames te zien.',
+        'frame.nomatch': 'Geen frames matchen het filter.',
+        'monitor.cap_running': 'capturet — {n} frames',
+        'monitor.cap_stopped': '{n} frames opgevangen',
+        'toast.mon_enabled': 'Monitor-modus actief',
+        'toast.mon_disabled': 'Terug naar managed-modus',
+        'toast.mon_fail': 'Modus wisselen mislukt — controleer NetworkManager / wpa_supplicant',
+        'toast.cap_started': 'Capture gestart',
+        'toast.cap_stopped': 'Capture gestopt',
+        'toast.ch_set': 'Kanaal ingesteld op {n}',
+        'toast.ch_fail': 'Kanaal-wijziging afgewezen',
     }
 };
 
@@ -1816,6 +2204,184 @@ async function refreshSpectrum() {
 
 window.addEventListener('resize', () => drawSpectrum());
 
+// ── Monitor mode ───────────────────────────────────────────────────────
+let MONITOR_INFO = null;
+let MONITOR_POLL = null;
+let MONITOR_FRAMES_CACHE = [];
+
+function populateChannelSelect(info) {
+    const sel = document.getElementById('mon-channel-select');
+    if (!sel || !info) return;
+    const current = sel.value;
+    sel.innerHTML = '<option value="">--</option>';
+    const optgroup24 = document.createElement('optgroup');
+    optgroup24.label = '2.4 GHz';
+    info.channels_24.forEach(ch => {
+        const opt = document.createElement('option');
+        opt.value = ch; opt.textContent = ch;
+        if (info.channel === ch) opt.selected = true;
+        optgroup24.appendChild(opt);
+    });
+    sel.appendChild(optgroup24);
+    const optgroup5 = document.createElement('optgroup');
+    optgroup5.label = '5 GHz';
+    info.channels_5.forEach(ch => {
+        const opt = document.createElement('option');
+        opt.value = ch; opt.textContent = ch;
+        if (info.channel === ch) opt.selected = true;
+        optgroup5.appendChild(opt);
+    });
+    sel.appendChild(optgroup5);
+    if (current && !info.channel) sel.value = current;
+}
+
+async function refreshMonitorStatus() {
+    try {
+        const r = await fetch('/api/monitor/status');
+        if (!r.ok) return;
+        MONITOR_INFO = await r.json();
+        document.getElementById('mon-iface').textContent = MONITOR_INFO.interface || '–';
+        document.getElementById('mon-mode').textContent = MONITOR_INFO.type || '–';
+        document.getElementById('mon-channel').textContent = MONITOR_INFO.channel || '–';
+        populateChannelSelect(MONITOR_INFO);
+
+        const startBtn = document.getElementById('btn-capture-start');
+        const stopBtn  = document.getElementById('btn-capture-stop');
+        const pcapBtn  = document.getElementById('btn-pcap');
+        startBtn.disabled = !!MONITOR_INFO.capturing || MONITOR_INFO.type !== 'monitor';
+        stopBtn.disabled  = !MONITOR_INFO.capturing;
+        pcapBtn.disabled  = !MONITOR_INFO.pcap_available;
+
+        const stats = document.getElementById('capture-stats');
+        if (MONITOR_INFO.capturing) {
+            stats.textContent = t('monitor.cap_running').replace('{n}', MONITOR_INFO.frame_count);
+        } else if (MONITOR_INFO.frame_count > 0) {
+            stats.textContent = t('monitor.cap_stopped').replace('{n}', MONITOR_INFO.frame_count);
+        } else {
+            stats.textContent = '';
+        }
+    } catch (e) { /* leave stale */ }
+}
+
+async function monitorEnable() {
+    const ch = document.getElementById('mon-channel-select').value || null;
+    try {
+        const r = await fetch('/api/monitor/enable', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({channel: ch})
+        });
+        const d = await r.json();
+        if (d.success) {
+            showToast(t('toast.mon_enabled'), true);
+            refreshMonitorStatus();
+        } else {
+            showToast(d.error || t('toast.mon_fail'), false);
+        }
+    } catch (e) { showToast(t('toast.mon_fail'), false); }
+}
+
+async function monitorDisable() {
+    try {
+        const r = await fetch('/api/monitor/disable', {method: 'POST'});
+        const d = await r.json();
+        if (d.success) {
+            showToast(t('toast.mon_disabled'), true);
+            refreshMonitorStatus();
+        } else {
+            showToast(d.error || t('toast.mon_fail'), false);
+        }
+    } catch (e) { showToast(t('toast.mon_fail'), false); }
+}
+
+async function monitorSetChannel() {
+    const ch = document.getElementById('mon-channel-select').value;
+    if (!ch) return;
+    try {
+        const r = await fetch('/api/monitor/channel', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({channel: ch})
+        });
+        const d = await r.json();
+        if (d.success) {
+            showToast(t('toast.ch_set').replace('{n}', ch), true);
+            refreshMonitorStatus();
+        } else {
+            showToast(d.error || t('toast.ch_fail'), false);
+        }
+    } catch (e) { showToast(t('toast.ch_fail'), false); }
+}
+
+async function captureStart() {
+    try {
+        const r = await fetch('/api/monitor/capture/start', {method: 'POST'});
+        const d = await r.json();
+        if (d.success) {
+            showToast(t('toast.cap_started'), true);
+            refreshMonitorStatus();
+            refreshFrames();
+        } else {
+            showToast(d.error || 'Capture failed', false);
+        }
+    } catch (e) { showToast('Capture failed', false); }
+}
+
+async function captureStop() {
+    try {
+        await fetch('/api/monitor/capture/stop', {method: 'POST'});
+        showToast(t('toast.cap_stopped'), true);
+        refreshMonitorStatus();
+        refreshFrames();
+    } catch (e) {}
+}
+
+function downloadPcap() {
+    // Force a fresh request — the underlying file is rewritten on each
+    // capture run.
+    window.location.href = '/api/monitor/pcap?_t=' + Date.now();
+}
+
+async function refreshFrames() {
+    try {
+        const r = await fetch('/api/monitor/frames');
+        if (!r.ok) return;
+        const d = await r.json();
+        MONITOR_FRAMES_CACHE = d.frames || [];
+        renderFrames();
+    } catch (e) {}
+}
+
+function renderFrames() {
+    const filterRaw = (document.getElementById('frame-filter') || {}).value || '';
+    const filter = filterRaw.toLowerCase();
+    const tbody = document.getElementById('frame-list');
+    if (!tbody) return;
+    const frames = MONITOR_FRAMES_CACHE.filter(f => {
+        if (!filter) return true;
+        return ((f.type || '') + ' ' + (f.src || '') + ' ' + (f.dst || '') +
+                ' ' + (f.ssid || '') + ' ' + (f.raw || '')).toLowerCase().includes(filter);
+    });
+    if (frames.length === 0) {
+        const empty = MONITOR_FRAMES_CACHE.length === 0 ? t('frame.empty') : t('frame.nomatch');
+        tbody.innerHTML = `<tr><td colspan="6">${empty}</td></tr>`;
+        return;
+    }
+    // Newest first.
+    const rows = frames.slice().reverse().slice(0, 200).map(f => {
+        const ts = new Date(f.t * 1000).toLocaleTimeString();
+        return `<tr>
+            <td style="font-family:monospace;font-size:0.8rem;">${ts}</td>
+            <td>${f.type || '?'}</td>
+            <td style="font-family:monospace;font-size:0.8rem;">${f.src || ''}</td>
+            <td style="font-family:monospace;font-size:0.8rem;">${f.dst || ''}</td>
+            <td>${f.ssid || ''}</td>
+            <td>${f.rssi != null ? f.rssi + ' dBm' : ''}</td>
+        </tr>`;
+    });
+    tbody.innerHTML = rows.join('');
+}
+
 function formatBytes(b) {
     if (b < 1024) return b + ' B';
     if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
@@ -1851,6 +2417,7 @@ function switchTab(name) {
     document.getElementById('tab-' + name).classList.add('active');
     if (name === 'advanced' && !advLoaded) loadAdvanced();
     if (name === 'networks') { refreshSpectrum(); }
+    if (name === 'monitor') { refreshMonitorStatus(); refreshFrames(); }
 }
 
 // refreshStatus() is defined later as a wrapper around applyStatusPayload —
@@ -2466,6 +3033,14 @@ setInterval(() => {
         refreshSpectrum();
     }
 }, 30000);
+setInterval(() => {
+    // While the Monitor tab is open, keep status + frame buffer fresh.
+    const monTab = document.getElementById('tab-monitor');
+    if (monTab && monTab.classList.contains('active')) {
+        refreshMonitorStatus();
+        if (MONITOR_INFO && MONITOR_INFO.capturing) refreshFrames();
+    }
+}, 2000);
 </script>
 </body>
 </html>
@@ -2491,15 +3066,18 @@ if __name__ == "__main__":
              "the only thing preventing remote root operations.",
     )
     parser.add_argument(
-        "--dev", action="store_true",
-        help="Use Werkzeug's development server (auto-reload, better "
-             "tracebacks). Default: serve via waitress, a production-grade "
-             "WSGI server with no startup warning.",
+        "--prod", action="store_true",
+        help="Serve via waitress instead of Werkzeug's threaded server. "
+             "Production-grade and removes the 'dev server' banner, but "
+             "Server-Sent Events (the live status stream) do not work "
+             "under waitress — the Overview tab won't auto-update. Use "
+             "with a reverse proxy + a gevent/asgi worker if you need "
+             "real production behaviour.",
     )
     parser.add_argument(
         "--threads", type=int, default=8,
-        help="Number of worker threads for the production server "
-             "(ignored with --dev). Default: 8.",
+        help="Worker thread count for waitress (only used with --prod). "
+             "Default: 8.",
     )
     args = parser.parse_args()
 
@@ -2531,19 +3109,22 @@ if __name__ == "__main__":
     print( " Login              :  any username, password = the token above")
     print()
 
-    if args.dev:
-        # Werkzeug dev server — auto-reload, friendlier tracebacks, but
-        # prints a noisy "do not use in production" banner.
-        app.run(host=args.host, port=args.port, debug=False)
-    else:
-        # Production path: waitress. No banner, real WSGI server, handles
-        # the long-lived /api/stream connections without surprises.
+    if args.prod:
         try:
             from waitress import serve
         except ImportError:
             print("ERROR: waitress is not installed. Run "
                   "`pip install --require-hashes -r dashboard/requirements.txt`,",
-                  "or start with --dev to fall back to the development server.")
+                  "or omit --prod to use Werkzeug.")
             raise SystemExit(1)
+        print(" NOTE: --prod uses waitress; /api/stream (SSE) does not work "
+              "under it — the\n       dashboard's live updates will fall back "
+              "to manual refresh only.\n")
         serve(app, host=args.host, port=args.port, threads=args.threads,
               ident="rtl8852au-dashboard")
+    else:
+        # Werkzeug, threaded so the long-lived /api/stream SSE connection
+        # doesn't block other endpoints. The "development server" banner
+        # is acceptable for a host-local dashboard — see --prod for the
+        # waitress path if the banner matters.
+        app.run(host=args.host, port=args.port, debug=False, threaded=True)
