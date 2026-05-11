@@ -37,6 +37,19 @@ changes in this file.
 - `.gitignore` no longer ignores `patches/` (was matching quilt's pattern).
 
 ### Fixed
+- **Build: kernel 6.17 incompatible-pointer-types (`patches/0008`).**
+  The cfg80211 MLO refactor (`radio_idx` on `set_wiphy_params`,
+  `set_tx_power`, `get_tx_power`; `struct net_device *` on
+  `set_monitor_channel`) landed in 6.17, not 6.18. The four
+  `LINUX_VERSION_CODE` guards in `os_dep/linux/ioctl_cfg80211.c` were
+  lowered from `>= 6.18` to `>= 6.17` so CI builds on the Ubuntu 24.04
+  runner (kernel 6.17.0-1010-azure) no longer fail with
+  `incompatible pointer type` for `.set_wiphy_params`, `.set_tx_power`,
+  `.get_tx_power` and `.set_monitor_channel` in `rtw_cfg80211_ops`.
+- **Build: `tests/test_driver.py` and `dashboard/app.py` ruff lint.**
+  Six F541 (`f`-prefixed strings without placeholders) and two B007
+  (unused loop variable `i`) findings cleared so the `Ruff (lint)` job
+  in CI passes.
 - **Driver: kernel panic on rapid `ifup`/`ifdown` and `rmmod`-while-associated
   (`patches/0007`).** `netdev_open()` took `hw_init_mutex` but
   `netdev_close()` did not, so a rapid `ip link up/down` cycle could race

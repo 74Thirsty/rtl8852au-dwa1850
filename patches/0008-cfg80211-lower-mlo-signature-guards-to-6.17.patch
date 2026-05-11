@@ -1,0 +1,70 @@
+From e88c9d5e97df6a01eda5c909fc0d2f346aafd338 Mon Sep 17 00:00:00 2001
+From: WimLee115 <221691756+WimLee115@users.noreply.github.com>
+Date: Mon, 11 May 2026 08:46:17 +0200
+Subject: [PATCH] cfg80211: lower MLO signature guards from 6.18 to 6.17
+
+The cfg80211 multi-link-operation refactor that added `int radio_idx`
+to `set_wiphy_params`, `set_tx_power`, `get_tx_power` and the
+`struct net_device *` parameter to `set_monitor_channel` landed in
+Linux 6.17, not 6.18 as the existing baseline guards assumed.
+
+Symptom (failed CI build on ubuntu-24.04 with kernel 6.17.0-1010-azure):
+
+  ioctl_cfg80211.c:10275: error: initialization of `int (*)(struct wiphy *, int, u32)`
+    from incompatible pointer type `int (*)(struct wiphy *, u32)`
+  ioctl_cfg80211.c:10280: error: ... .set_tx_power
+  ioctl_cfg80211.c:10281: error: ... .get_tx_power
+  ioctl_cfg80211.c:10337: error: ... .set_monitor_channel
+
+Fix: change the four `LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)`
+guards in os_dep/linux/ioctl_cfg80211.c to `>= KERNEL_VERSION(6, 17, 0)`
+so the new MLO signatures are picked up on every kernel that has them.
+The legacy branch (`#else`) still covers <= 6.16.
+
+Verified: builds cleanly on kernel 6.19.14+kali-amd64 (>= 6.17 branch
+selected). The < 6.17 branch is unchanged and still matches the original
+pre-MLO API used by older LTS kernels.
+
+diff --git a/os_dep/linux/ioctl_cfg80211.c b/os_dep/linux/ioctl_cfg80211.c
+index 29d74f6..d2442d8 100755
+--- a/os_dep/linux/ioctl_cfg80211.c
++++ b/os_dep/linux/ioctl_cfg80211.c
+@@ -3436,7 +3436,7 @@ static void cfg80211_rtw_abort_scan(struct wiphy *wiphy,
+ }
+ #endif /* LINUX_VERSION_CODE >= 4.5.0 */
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0))
+ static int cfg80211_rtw_set_wiphy_params(struct wiphy *wiphy, int radio_idx, u32 changed)
+ #else
+ static int cfg80211_rtw_set_wiphy_params(struct wiphy *wiphy, u32 changed)
+@@ -4415,7 +4415,7 @@ static int cfg80211_rtw_disconnect(struct wiphy *wiphy, struct net_device *ndev,
+ 	return 0;
+ }
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0))
+ static int cfg80211_rtw_set_txpower(struct wiphy *wiphy,
+ 	struct wireless_dev *wdev,
+ 	int radio_idx,
+@@ -4456,7 +4456,7 @@ static int cfg80211_rtw_set_txpower(struct wiphy *wiphy,
+ 	return 0;
+ }
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0))
+ static int cfg80211_rtw_get_txpower(struct wiphy *wiphy,
+ 	struct wireless_dev *wdev,
+ 	int radio_idx, unsigned int link_id,
+@@ -6358,7 +6358,7 @@ static void rtw_get_chbwoff_from_cfg80211_chan_def(
+ }
+ #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) */
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0))
+ static int cfg80211_rtw_set_monitor_channel(struct wiphy *wiphy,
+ 	struct net_device *dev,
+ 	struct cfg80211_chan_def *chandef)
+-- 
+2.53.0
+

@@ -24,6 +24,7 @@ after the baseline and hardware-ID additions. Each file is a standard
 | 0005 | `build-fix-for-kernel-6.8` | Build | Compatibility shim for kernel 6.8 |
 | 0006 | `hw-add-usb-id-3625-010f-tp-link-archer-tx35u-plus` | Hardware | USB ID `3625:010f` (TP-Link Archer TX35U Plus) |
 | 0007 | `os-serialise-netdev-close-with-hw_init_mutex` | Bugfix | Kernel panic on rapid `ifup`/`ifdown` and `rmmod`-while-associated — `netdev_close()` now takes `hw_init_mutex` symmetrically with `netdev_open()` and skips the disassoc cmd path when the device is surprise-removed |
+| 0008 | `cfg80211-lower-mlo-signature-guards-to-6.17` | Build | Build failure on kernel 6.17 — the MLO refactor (`radio_idx`, `net_device *` on `set_monitor_channel`) landed in 6.17, not 6.18. Four `LINUX_VERSION_CODE` guards in `os_dep/linux/ioctl_cfg80211.c` lowered from `>= 6.18` to `>= 6.17` |
 
 ## Applying
 
