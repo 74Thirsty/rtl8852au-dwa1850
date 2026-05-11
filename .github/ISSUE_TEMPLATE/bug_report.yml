@@ -1,5 +1,5 @@
-name: Bug report
-description: Driver crashes, fails to load, or misbehaves on supported hardware.
+name: Bug report / Bug melden
+description: Driver crashes, fails to load, or misbehaves on supported hardware. / Driver crasht, laadt niet of gedraagt zich onverwacht op ondersteunde hardware.
 title: "[bug] "
 labels: ["bug", "needs-triage"]
 body:
@@ -8,11 +8,15 @@ body:
       value: |
         Please fill in as much as you can — the more detail, the faster this gets fixed.
 
+        Vul zoveel mogelijk in — hoe meer detail, hoe sneller dit opgelost wordt.
+
   - type: input
     id: kernel
     attributes:
-      label: Kernel version
-      description: Output of `uname -r`
+      label: Kernel version / Kernel-versie
+      description: |
+        Output of `uname -r`.
+        Output van `uname -r`.
       placeholder: "6.18.9-kali-amd64"
     validations:
       required: true
@@ -20,8 +24,10 @@ body:
   - type: input
     id: distro
     attributes:
-      label: Distribution
-      description: Distro name and version
+      label: Distribution / Distributie
+      description: |
+        Distro name and version.
+        Distro-naam en -versie.
       placeholder: "Kali Linux Rolling 2026.1"
     validations:
       required: true
@@ -30,7 +36,9 @@ body:
     id: usb_id
     attributes:
       label: USB ID
-      description: Output of `lsusb | grep -i realtek` (or the relevant vendor)
+      description: |
+        Output of `lsusb | grep -i realtek` (or the relevant vendor).
+        Output van `lsusb | grep -i realtek` (of de relevante vendor).
       placeholder: "2357:013f TP-Link 802.11ac WLAN Adapter"
     validations:
       required: true
@@ -38,20 +46,22 @@ body:
   - type: dropdown
     id: install_method
     attributes:
-      label: Install method
+      label: Install method / Installatie-methode
       options:
         - "DKMS (sudo ./dkms-install.sh)"
         - "make + make install"
-        - "Distro package"
-        - "Other"
+        - "Distro package / Distro-pakket"
+        - "Other / Anders"
     validations:
       required: true
 
   - type: textarea
     id: what_happens
     attributes:
-      label: What happens
-      description: Describe the problem. What did you do? What did you expect? What happened instead?
+      label: What happens / Wat gebeurt er
+      description: |
+        Describe the problem. What did you do? What did you expect? What happened instead?
+        Beschrijf het probleem. Wat deed je? Wat verwachtte je? Wat gebeurde er in plaats daarvan?
     validations:
       required: true
 
@@ -61,11 +71,17 @@ body:
       label: dmesg output
       description: |
         Run `sudo dmesg | grep -iE "8852|rtl" | tail -50` and paste the result.
+        Draai `sudo dmesg | grep -iE "8852|rtl" | tail -50` en plak het resultaat.
 
         **Privacy:** dmesg can include MAC addresses, SSID names and hostnames.
         If you would rather not publish them, redact with `xx:xx:xx` / `<SSID>`
         before pasting — none of those values are needed to diagnose driver
         bugs.
+
+        **Privacy:** dmesg kan MAC-adressen, SSID-namen en hostnames bevatten.
+        Wil je die niet publiceren, vervang ze door `xx:xx:xx` / `<SSID>`
+        voor het plakken — geen van die waarden is nodig voor het diagnosticeren
+        van driver-bugs.
       render: shell
     validations:
       required: true
@@ -73,16 +89,18 @@ body:
   - type: textarea
     id: build_log
     attributes:
-      label: Build log (if build fails)
-      description: Output of `make 2>&1 | tail -50`
+      label: Build log (if build fails) / Build-log (als de build faalt)
+      description: |
+        Output of `make 2>&1 | tail -50`.
+        Output van `make 2>&1 | tail -50`.
       render: shell
 
   - type: checkboxes
     id: monitor_mode
     attributes:
-      label: Does this happen in
+      label: Does this happen in / Treedt dit op in
       options:
         - label: Managed mode
         - label: Monitor mode
         - label: AP mode
-        - label: Build time only
+        - label: Build time only / Alleen bij build
