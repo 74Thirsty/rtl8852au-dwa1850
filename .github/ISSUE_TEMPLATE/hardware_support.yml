@@ -34,7 +34,9 @@ body:
     attributes:
       label: Evidence
       description: |
-        Output of `lsusb -v -d <vendor:product>` (manufacturer + product strings) helps confirm
+        Output of `lsusb -v -d <vendor:product>` (manufacturer + product strings) helps confirm.
+        **Privacy:** `lsusb -v` includes the device's serial number on most adapters; redact
+        the `iSerial` line if you prefer not to publish it — it isn't required to add the USB ID.
         this is really an RTL8852AU. If you've tried loading the driver, paste the dmesg.
       render: shell
 

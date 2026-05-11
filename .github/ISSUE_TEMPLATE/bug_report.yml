@@ -59,7 +59,13 @@ body:
     id: dmesg
     attributes:
       label: dmesg output
-      description: Run `sudo dmesg | grep -iE "8852|rtl" | tail -50` and paste the result.
+      description: |
+        Run `sudo dmesg | grep -iE "8852|rtl" | tail -50` and paste the result.
+
+        **Privacy:** dmesg can include MAC addresses, SSID names and hostnames.
+        If you would rather not publish them, redact with `xx:xx:xx` / `<SSID>`
+        before pasting — none of those values are needed to diagnose driver
+        bugs.
       render: shell
     validations:
       required: true

@@ -1,0 +1,27 @@
+# GitHub CODEOWNERS — auto-assigns reviewers for PRs that touch matching paths.
+# Syntax: https://docs.github.com/en/repositories/managing-your-repositories-settings-and-customizations/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo
+*                                   @WimLee115
+
+# Driver source — kept close to the Realtek vendor style; non-trivial
+# patches need the maintainer's eyes
+/core/                              @WimLee115
+/hal/                               @WimLee115
+/phl/                               @WimLee115
+/os_dep/                            @WimLee115
+/include/                           @WimLee115
+
+# Build + CI surface
+/Makefile                           @WimLee115
+/dkms.conf                          @WimLee115
+/dkms-install.sh                    @WimLee115
+/dkms-remove.sh                     @WimLee115
+/.github/                           @WimLee115
+
+# Security-sensitive code (dashboard, tools) — never merge without review
+/dashboard/                         @WimLee115
+/tools/                             @WimLee115
+
+# Test harness
+/tests/                             @WimLee115

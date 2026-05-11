@@ -1,13 +1,35 @@
 version: 2
 updates:
+  # GitHub Actions — weekly so supply-chain security bumps land fast.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
     open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
+  # Python deps for the dashboard.
   - package-ecosystem: "pip"
     directory: "/dashboard"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps"
+    groups:
+      python-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
