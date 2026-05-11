@@ -3436,7 +3436,7 @@ static void cfg80211_rtw_abort_scan(struct wiphy *wiphy,
 }
 #endif /* LINUX_VERSION_CODE >= 4.5.0 */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0))
 static int cfg80211_rtw_set_wiphy_params(struct wiphy *wiphy, int radio_idx, u32 changed)
 #else
 static int cfg80211_rtw_set_wiphy_params(struct wiphy *wiphy, u32 changed)
@@ -4415,7 +4415,7 @@ static int cfg80211_rtw_disconnect(struct wiphy *wiphy, struct net_device *ndev,
 	return 0;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0))
 static int cfg80211_rtw_set_txpower(struct wiphy *wiphy,
 	struct wireless_dev *wdev,
 	int radio_idx,
@@ -4456,7 +4456,7 @@ static int cfg80211_rtw_set_txpower(struct wiphy *wiphy,
 	return 0;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0))
 static int cfg80211_rtw_get_txpower(struct wiphy *wiphy,
 	struct wireless_dev *wdev,
 	int radio_idx, unsigned int link_id,
@@ -6358,7 +6358,7 @@ static void rtw_get_chbwoff_from_cfg80211_chan_def(
 }
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 17, 0))
 static int cfg80211_rtw_set_monitor_channel(struct wiphy *wiphy,
 	struct net_device *dev,
 	struct cfg80211_chan_def *chandef)
