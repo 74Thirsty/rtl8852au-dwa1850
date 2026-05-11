@@ -20,6 +20,7 @@ common scenarios.
 - [Tabs](#tabs)
   - [Overview](#overview)
   - [Networks](#networks)
+  - [Monitor](#monitor)
   - [Settings](#settings)
   - [Tests](#tests)
   - [Advanced](#advanced)
@@ -130,6 +131,59 @@ under the title reads `N APs across M channels`.
   to the conf file, so a `"` in either won't break the parser.
 - **Disconnect** — stops `wpa_supplicant`, releases the DHCP lease,
   brings the interface down.
+
+### Monitor
+
+The driver's marquee feature in one tab. Three cards:
+
+**Mode + interface state**
+
+The top card shows the current interface, mode (`managed` /
+`monitor` / `unspec`) and channel, plus two buttons:
+
+- **Enable monitor** — runs `ip link down` → `iw dev … set type
+  monitor` → `ip link up`. If a channel is selected in the picker
+  below, it is set in the same step.
+- **Back to managed** — symmetric reverse. Any running frame
+  capture is stopped first.
+
+A yellow warning above the buttons reminds you that NetworkManager
+and `wpa_supplicant` must let go of the interface before the toggle
+can succeed. The dashboard cannot do that for you; run
+
+```bash
+sudo nmcli device set wlan1 managed no
+sudo systemctl stop wpa_supplicant
+```
+
+once, then toggle.
+
+**Channel selection**
+
+A `<select>` grouped 2.4 GHz (channels 1–14) and 5 GHz (36–165). The
+current channel is pre-selected. **Apply** runs `iw dev … set
+channel N`. If your regulatory domain or the driver rejects the
+channel, a toast surfaces the error — the picker doesn't filter
+proactively.
+
+**Frame capture**
+
+Spawns two `tcpdump` processes in parallel: one writes a `pcap` to
+`/tmp/rtw_monitor.pcap` for the **Download .pcap** button (open it
+in Wireshark), the other emits text lines that feed the live frame
+table.
+
+| Control               | What it does                                                  |
+|-----------------------|---------------------------------------------------------------|
+| **Start capture**     | Spawns both tcpdumps. Disabled when not in monitor mode.      |
+| **Stop capture**      | Terminates both. The pcap file stays so you can still export. |
+| **Download .pcap**    | Saves the file with `Content-Type: application/vnd.tcpdump.pcap` so Wireshark opens it directly. |
+| **Filter** (input)    | Case-insensitive substring match against type / SSID / src / dst / raw. |
+| Frame table           | Newest first, capped at 200 rows. Time, type, source MAC, destination MAC, SSID (for management frames), RSSI. |
+
+The table refreshes every 2 seconds while the Monitor tab is the
+active one and capture is running. Switching tabs pauses the
+refresh; the capture itself keeps running until you click Stop.
 
 ### Settings
 

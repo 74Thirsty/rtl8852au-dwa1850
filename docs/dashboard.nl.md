@@ -21,6 +21,7 @@ een aantal veelvoorkomende scenario's.
 - [Tabbladen](#tabbladen)
   - [Overzicht](#overzicht)
   - [Netwerken](#netwerken)
+  - [Monitor](#monitor)
   - [Instellingen](#instellingen)
   - [Tests](#tests)
   - [Geavanceerd](#geavanceerd)
@@ -134,6 +135,59 @@ kanalen`.
   breekt de parser niet.
 - **Verbreken** — stopt `wpa_supplicant`, geeft de DHCP-lease vrij en
   haalt de interface omlaag.
+
+### Monitor
+
+De vlaggenschip-feature van de driver in één tab. Drie kaarten:
+
+**Modus + interface-status**
+
+De bovenste kaart toont de huidige interface, modus (`managed` /
+`monitor` / `unspec`) en kanaal, plus twee knoppen:
+
+- **Monitor inschakelen** — draait `ip link down` → `iw dev … set
+  type monitor` → `ip link up`. Als een kanaal is gekozen in de
+  picker eronder, wordt dat in dezelfde stap gezet.
+- **Terug naar managed** — symmetrisch omgekeerd. Eventuele
+  lopende capture wordt eerst gestopt.
+
+Een gele waarschuwing boven de knoppen herinnert je eraan dat
+NetworkManager en `wpa_supplicant` de interface eerst moeten
+loslaten. Het dashboard kan dat niet voor je doen; draai
+
+```bash
+sudo nmcli device set wlan1 managed no
+sudo systemctl stop wpa_supplicant
+```
+
+eenmalig, en wissel daarna.
+
+**Kanaal-keuze**
+
+Een `<select>` gegroepeerd op 2,4 GHz (kanalen 1–14) en 5 GHz
+(36–165). Het huidige kanaal staat voorgeselecteerd. **Toepassen**
+draait `iw dev … set channel N`. Als je regulatoire-domein of de
+driver het kanaal afwijst, verschijnt de fout als een toast — de
+picker filtert niet pro-actief.
+
+**Frame-capture**
+
+Spawnt twee `tcpdump`-processen parallel: één schrijft een `pcap`
+naar `/tmp/rtw_monitor.pcap` voor de **.pcap downloaden**-knop
+(open in Wireshark), de andere produceert tekstregels die de live
+frame-tabel voeden.
+
+| Knop                  | Wat het doet                                                  |
+|-----------------------|---------------------------------------------------------------|
+| **Capture starten**   | Spawnt beide tcpdumps. Uitgeschakeld zolang je niet in monitor-modus zit. |
+| **Capture stoppen**   | Beëindigt beide. Het pcap-bestand blijft staan voor export.   |
+| **.pcap downloaden**  | Slaat het bestand op met `Content-Type: application/vnd.tcpdump.pcap` zodat Wireshark het direct opent. |
+| **Filter** (input)    | Case-insensitive substring-match tegen type / SSID / src / dst / raw. |
+| Frame-tabel           | Nieuwste eerst, gelimiteerd op 200 rijen. Tijd, type, bron-MAC, bestemmings-MAC, SSID (voor management-frames), RSSI. |
+
+De tabel ververst elke 2 seconden zolang de Monitor-tab actief is
+en de capture loopt. Wisselen van tab pauzeert het verversen; de
+capture zelf blijft draaien totdat je op Stoppen klikt.
 
 ### Instellingen
 
