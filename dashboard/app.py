@@ -697,7 +697,7 @@ def api_advanced_reload():
 
 DASHBOARD_HTML = """
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="en" id="html-root">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -803,42 +803,53 @@ table tr:hover td { background: #0f172a; }
 .btn-warning:hover { background: #b45309; }
 .btn-outline { background: transparent; border: 1px solid #475569; color: #94a3b8; }
 .btn-outline:hover { background: #334155; color: #e2e8f0; }
+.lang-switch { display: flex; gap: 4px; align-items: center; }
+.lang-btn { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 4px 10px;
+            border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+.lang-btn.active { background: #2563eb; border-color: #2563eb; color: white; }
+.lang-btn:hover:not(.active) { background: #334155; color: #e2e8f0; }
 </style>
 </head>
 <body>
 
 <div class="header">
     <h1>RTL8852AU WiFi Dashboard</h1>
-    <span id="status-badge" class="status-badge badge-ok">Laden...</span>
+    <div style="display:flex;align-items:center;gap:14px;">
+        <div class="lang-switch">
+            <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+            <button class="lang-btn" data-lang="nl" onclick="setLanguage('nl')">NL</button>
+        </div>
+        <span id="status-badge" class="status-badge badge-ok" data-i18n="status.loading">Loading...</span>
+    </div>
 </div>
 
 <div class="container">
     <div class="tab-bar">
-        <div class="tab active" onclick="switchTab('overview')">Overzicht</div>
-        <div class="tab" onclick="switchTab('networks')">Netwerken</div>
-        <div class="tab" onclick="switchTab('settings')">Instellingen</div>
-        <div class="tab" onclick="switchTab('tests')">Tests</div>
-        <div class="tab" onclick="switchTab('advanced')">Geavanceerd</div>
+        <div class="tab active" onclick="switchTab('overview')" data-tab="overview" data-i18n="tab.overview">Overview</div>
+        <div class="tab" onclick="switchTab('networks')" data-tab="networks" data-i18n="tab.networks">Networks</div>
+        <div class="tab" onclick="switchTab('settings')" data-tab="settings" data-i18n="tab.settings">Settings</div>
+        <div class="tab" onclick="switchTab('tests')" data-tab="tests" data-i18n="tab.tests">Tests</div>
+        <div class="tab" onclick="switchTab('advanced')" data-tab="advanced" data-i18n="tab.advanced">Advanced</div>
     </div>
 
     <!-- Overview Tab -->
     <div id="tab-overview" class="tab-content active">
         <div class="grid">
             <div class="card">
-                <h2>Adapter Info</h2>
-                <div id="adapter-info">Laden...</div>
+                <h2 data-i18n="card.adapter">Adapter Info</h2>
+                <div id="adapter-info" data-i18n="status.loading">Loading...</div>
             </div>
             <div class="card">
-                <h2>Verbinding</h2>
-                <div id="connection-info">Laden...</div>
+                <h2 data-i18n="card.connection">Connection</h2>
+                <div id="connection-info" data-i18n="status.loading">Loading...</div>
             </div>
             <div class="card">
-                <h2>Statistieken</h2>
+                <h2 data-i18n="card.stats">Statistics</h2>
                 <div id="stats-info" class="stat-grid"></div>
             </div>
             <div class="card">
-                <h2>Driver Info</h2>
-                <div id="driver-info">Laden...</div>
+                <h2 data-i18n="card.driver">Driver Info</h2>
+                <div id="driver-info" data-i18n="status.loading">Loading...</div>
             </div>
         </div>
     </div>
@@ -846,32 +857,39 @@ table tr:hover td { background: #0f172a; }
     <!-- Networks Tab -->
     <div id="tab-networks" class="tab-content">
         <div class="card">
-            <h2>Beschikbare Netwerken
-                <button class="btn btn-primary btn-sm" onclick="doScan()" style="float:right;">
-                    Scannen
+            <h2><span data-i18n="card.scan">Available networks</span>
+                <button class="btn btn-primary btn-sm" onclick="doScan()" style="float:right;" data-i18n="btn.scan">
+                    Scan
                 </button>
             </h2>
             <div id="scan-status" style="margin: 10px 0; color: #64748b;"></div>
             <table>
                 <thead>
-                    <tr><th>SSID</th><th>BSSID</th><th>Signaal</th><th>Freq</th><th>Beveiliging</th><th></th></tr>
+                    <tr>
+                        <th data-i18n="th.ssid">SSID</th>
+                        <th data-i18n="th.bssid">BSSID</th>
+                        <th data-i18n="th.signal">Signal</th>
+                        <th data-i18n="th.freq">Freq</th>
+                        <th data-i18n="th.security">Security</th>
+                        <th></th>
+                    </tr>
                 </thead>
-                <tbody id="network-list"><tr><td colspan="6">Klik op Scannen...</td></tr></tbody>
+                <tbody id="network-list"><tr><td colspan="6" data-i18n="scan.click">Click Scan...</td></tr></tbody>
             </table>
         </div>
         <div class="card" style="margin-top: 20px;">
-            <h2>Handmatig Verbinden</h2>
+            <h2 data-i18n="card.connect">Connect manually</h2>
             <div class="form-group">
-                <label>SSID</label>
-                <input type="text" id="connect-ssid" placeholder="Netwerknaam">
+                <label data-i18n="th.ssid">SSID</label>
+                <input type="text" id="connect-ssid" data-i18n-placeholder="ph.network" placeholder="Network name">
             </div>
             <div class="form-group">
-                <label>Wachtwoord</label>
-                <input type="password" id="connect-pass" placeholder="Wachtwoord (leeg voor open)">
+                <label data-i18n="label.password">Password</label>
+                <input type="password" id="connect-pass" data-i18n-placeholder="ph.password" placeholder="Password (leave blank for open)">
             </div>
             <div class="actions">
-                <button class="btn btn-success" onclick="doConnect()">Verbinden</button>
-                <button class="btn btn-danger" onclick="doDisconnect()">Verbreken</button>
+                <button class="btn btn-success" onclick="doConnect()" data-i18n="btn.connect">Connect</button>
+                <button class="btn btn-danger" onclick="doDisconnect()" data-i18n="btn.disconnect">Disconnect</button>
             </div>
         </div>
     </div>
@@ -880,24 +898,24 @@ table tr:hover td { background: #0f172a; }
     <div id="tab-settings" class="tab-content">
         <div class="grid">
             <div class="card">
-                <h2>Interface Instellingen</h2>
+                <h2 data-i18n="card.iface">Interface Settings</h2>
                 <div class="form-group">
                     <label>MTU</label>
                     <input type="number" id="set-mtu" value="1500" min="576" max="9000">
                 </div>
                 <div class="form-group">
-                    <label>TX Power (dBm)</label>
+                    <label data-i18n="label.txpower">TX Power (dBm)</label>
                     <input type="number" id="set-txpower" value="20" min="0" max="30">
                 </div>
                 <div class="form-group">
-                    <label>Power Save</label>
+                    <label data-i18n="label.powersave">Power Save</label>
                     <select id="set-powersave">
-                        <option value="0">Uit</option>
-                        <option value="1">Aan</option>
+                        <option value="0" data-i18n="opt.off">Off</option>
+                        <option value="1" data-i18n="opt.on">On</option>
                     </select>
                 </div>
                 <div class="actions">
-                    <button class="btn btn-primary" onclick="applySettings()">Toepassen</button>
+                    <button class="btn btn-primary" onclick="applySettings()" data-i18n="btn.apply">Apply</button>
                 </div>
             </div>
         </div>
@@ -906,13 +924,13 @@ table tr:hover td { background: #0f172a; }
     <!-- Tests Tab -->
     <div id="tab-tests" class="tab-content">
         <div class="card">
-            <h2>Driver Test Suite
-                <button class="btn btn-primary btn-sm" onclick="runTests()" style="float:right;" id="btn-run-tests">
-                    Tests Draaien
+            <h2><span data-i18n="card.tests">Driver Test Suite</span>
+                <button class="btn btn-primary btn-sm" onclick="runTests()" style="float:right;" id="btn-run-tests" data-i18n="btn.runtests">
+                    Run tests
                 </button>
             </h2>
             <div id="test-summary" style="margin: 16px 0; color: #94a3b8;"></div>
-            <div id="test-output">Klik op "Tests Draaien" om de testsuite te starten...</div>
+            <div id="test-output" data-i18n="tests.click">Click "Run tests" to start the suite...</div>
         </div>
     </div>
 
@@ -924,13 +942,13 @@ table tr:hover td { background: #0f172a; }
                 <div id="adv-proplist" class="adv-props"></div>
             </div>
             <div class="adv-main">
-                <div id="adv-editor" class="adv-empty">Selecteer een categorie en eigenschap om te configureren.</div>
+                <div id="adv-editor" class="adv-empty" data-i18n="adv.pickcat">Select a category and property to configure.</div>
             </div>
         </div>
         <div class="adv-actions">
-            <button class="btn btn-primary" onclick="saveAdvanced()">Opslaan &amp; Toepassen</button>
-            <button class="btn btn-outline" onclick="resetAdvanced()">Standaard Herstellen</button>
-            <button class="btn btn-warning" onclick="reloadModule()">Module Herladen</button>
+            <button class="btn btn-primary" onclick="saveAdvanced()" data-i18n="btn.saveapply">Save &amp; Apply</button>
+            <button class="btn btn-outline" onclick="resetAdvanced()" data-i18n="btn.resetdefault">Reset to default</button>
+            <button class="btn btn-warning" onclick="reloadModule()" data-i18n="btn.reloadmod">Reload module</button>
         </div>
         <div id="adv-pending-banner" class="adv-pending-banner" style="display:none;"></div>
     </div>
@@ -939,6 +957,243 @@ table tr:hover td { background: #0f172a; }
 <div id="toast" class="toast" style="opacity: 0;"></div>
 
 <script>
+// ─── i18n ──────────────────────────────────────────────────────────────
+const I18N = {
+    en: {
+        'status.loading': 'Loading...',
+        'status.driver_off': 'Driver not loaded',
+        'status.connected': 'Connected',
+        'status.disconnected': 'Not connected',
+        'status.none': 'None',
+        'tab.overview': 'Overview', 'tab.networks': 'Networks',
+        'tab.settings': 'Settings', 'tab.tests': 'Tests', 'tab.advanced': 'Advanced',
+        'card.adapter': 'Adapter Info', 'card.connection': 'Connection',
+        'card.stats': 'Statistics', 'card.driver': 'Driver Info',
+        'card.scan': 'Available networks', 'card.connect': 'Connect manually',
+        'card.iface': 'Interface Settings', 'card.tests': 'Driver Test Suite',
+        'btn.scan': 'Scan', 'btn.connect': 'Connect', 'btn.disconnect': 'Disconnect',
+        'btn.apply': 'Apply', 'btn.runtests': 'Run tests',
+        'btn.saveapply': 'Save & Apply', 'btn.resetdefault': 'Reset to default',
+        'btn.reloadmod': 'Reload module', 'btn.quickconnect': 'Connect',
+        'th.ssid': 'SSID', 'th.bssid': 'BSSID', 'th.signal': 'Signal',
+        'th.freq': 'Freq', 'th.security': 'Security',
+        'label.password': 'Password', 'label.txpower': 'TX Power (dBm)',
+        'label.powersave': 'Power Save', 'label.interface': 'Interface',
+        'label.mac': 'MAC address', 'label.ip': 'IP address',
+        'label.status': 'Status', 'label.mtu': 'MTU',
+        'label.usbspeed': 'USB speed', 'label.usbdev': 'USB device',
+        'label.signal': 'Signal', 'label.freq': 'Frequency',
+        'label.txbitrate': 'TX bitrate', 'label.module': 'Module',
+        'label.driver': 'Driver', 'label.kernel': 'Kernel',
+        'label.srcversion': 'Srcversion', 'label.version': 'Version',
+        'label.current': 'Current value (active)',
+        'label.pending': 'Saved (waiting for restart)',
+        'label.property': 'Property',
+        'opt.off': 'Off', 'opt.on': 'On', 'opt.auto': 'Auto',
+        'opt.auto_efuse': 'Auto (Efuse)', 'opt.none': 'None',
+        'opt.minimal': 'Minimal', 'opt.maximal': 'Maximal',
+        'opt.normal': 'Normal', 'opt.level2': 'Level 2',
+        'opt.clockgating': 'Clock Gating', 'opt.powergating': 'Power Gating',
+        'opt.nochange': 'No change', 'opt.only24': '2.4 GHz only',
+        'opt.only5': '5 GHz only', 'opt.dualband': 'Dual-band',
+        'opt.both_bands': 'Both bands',
+        'opt.1stream': '1 stream', 'opt.2streams': '2 streams',
+        'opt.error': 'Error', 'opt.warning': 'Warning', 'opt.notice': 'Notice',
+        'opt.info': 'Info', 'opt.debug': 'Debug',
+        'opt.usb3': 'USB 3.0', 'opt.usb2': 'USB 2.0',
+        'opt.hidden': '(Hidden)',
+        'stat.tx_data': 'TX Data', 'stat.rx_data': 'RX Data',
+        'stat.tx_pkts': 'TX Packets', 'stat.rx_pkts': 'RX Packets',
+        'stat.tx_err': 'TX Errors', 'stat.rx_err': 'RX Errors',
+        'stat.tx_drop': 'TX Dropped', 'stat.rx_drop': 'RX Dropped',
+        'ph.network': 'Network name',
+        'ph.password': 'Password (leave blank for open)',
+        'scan.click': 'Click Scan...',
+        'scan.scanning': 'Scanning...',
+        'scan.found': 'networks found',
+        'scan.none': 'No networks found',
+        'scan.error': 'Scan error',
+        'scan.errorfmt': 'Error: ',
+        'tests.click': 'Click "Run tests" to start the suite...',
+        'tests.running': 'Running tests...',
+        'tests.busy': 'Busy...',
+        'tests.nooutput': 'No output',
+        'tests.error': 'Error running tests',
+        'tests.passed': 'passed',
+        'tests.failed': 'failed',
+        'tests.errors': 'errors',
+        'tests.skipped': 'skipped',
+        'conn.notconnected': 'Not connected to a network',
+        'toast.enterssid': 'Enter an SSID',
+        'toast.connected': 'Connected to ',
+        'toast.connectfail': 'Connect failed',
+        'toast.connecterr': 'Error connecting',
+        'toast.disconnected': 'Disconnected',
+        'toast.disconnerr': 'Error disconnecting',
+        'toast.applied': 'Settings applied',
+        'toast.applyerr': 'Error applying settings',
+        'toast.nochanges': 'No changes to save',
+        'toast.saved': 'Settings saved.',
+        'toast.savedrestart': 'Settings saved. Module restart needed.',
+        'toast.saveerr': 'Error saving',
+        'toast.resetlocal': 'Local changes discarded',
+        'toast.reloading': 'Reloading module...',
+        'toast.reloaded': 'Module reloaded successfully',
+        'toast.reloadfail': 'Reload failed',
+        'toast.reloaderr': 'Error reloading',
+        'adv.pickcat': 'Select a category and property to configure.',
+        'adv.pickprop': 'Select a property to configure.',
+        'adv.unavailable': 'Not available — this parameter is not compiled into the current module.',
+        'adv.modulerestart': 'Module parameter — restart needed',
+        'adv.reloadconfirm': 'Reload module?\\n\\nThe WiFi connection will be briefly interrupted. The adapter will reinitialise with the saved settings.\\n\\nContinue?',
+        'adv.pending_1': ' unsaved change. Click "Save & Apply" to save, then "Reload module" to activate.',
+        'adv.pending_n': ' unsaved changes. Click "Save & Apply" to save, then "Reload module" to activate.',
+        'adv.pending_saved': 'There are saved changes that require a module restart. Click "Reload module" to activate.',
+        'adv.cat.wireless': 'Wireless Mode',
+        'adv.cat.channel': 'Channel & Bandwidth',
+        'adv.cat.power': 'Power Management',
+        'adv.cat.performance': 'Performance',
+        'adv.cat.antenna': 'Antenna & Beamforming',
+        'adv.cat.roaming': 'Roaming & Connection',
+        'adv.cat.debug': 'Debug & Advanced',
+    },
+    nl: {
+        'status.loading': 'Laden...',
+        'status.driver_off': 'Driver niet geladen',
+        'status.connected': 'Verbonden',
+        'status.disconnected': 'Niet verbonden',
+        'status.none': 'Geen',
+        'tab.overview': 'Overzicht', 'tab.networks': 'Netwerken',
+        'tab.settings': 'Instellingen', 'tab.tests': 'Tests', 'tab.advanced': 'Geavanceerd',
+        'card.adapter': 'Adapter Info', 'card.connection': 'Verbinding',
+        'card.stats': 'Statistieken', 'card.driver': 'Driver Info',
+        'card.scan': 'Beschikbare Netwerken', 'card.connect': 'Handmatig Verbinden',
+        'card.iface': 'Interface Instellingen', 'card.tests': 'Driver Test Suite',
+        'btn.scan': 'Scannen', 'btn.connect': 'Verbinden', 'btn.disconnect': 'Verbreken',
+        'btn.apply': 'Toepassen', 'btn.runtests': 'Tests Draaien',
+        'btn.saveapply': 'Opslaan & Toepassen', 'btn.resetdefault': 'Standaard Herstellen',
+        'btn.reloadmod': 'Module Herladen', 'btn.quickconnect': 'Verbind',
+        'th.ssid': 'SSID', 'th.bssid': 'BSSID', 'th.signal': 'Signaal',
+        'th.freq': 'Freq', 'th.security': 'Beveiliging',
+        'label.password': 'Wachtwoord', 'label.txpower': 'TX Power (dBm)',
+        'label.powersave': 'Power Save', 'label.interface': 'Interface',
+        'label.mac': 'MAC Adres', 'label.ip': 'IP Adres',
+        'label.status': 'Status', 'label.mtu': 'MTU',
+        'label.usbspeed': 'USB Snelheid', 'label.usbdev': 'USB Apparaat',
+        'label.signal': 'Signaal', 'label.freq': 'Frequentie',
+        'label.txbitrate': 'TX Bitrate', 'label.module': 'Module',
+        'label.driver': 'Driver', 'label.kernel': 'Kernel',
+        'label.srcversion': 'Srcversion', 'label.version': 'Versie',
+        'label.current': 'Huidige waarde (actief)',
+        'label.pending': 'Opgeslagen (wacht op herstart)',
+        'label.property': 'Eigenschap',
+        'opt.off': 'Uit', 'opt.on': 'Aan', 'opt.auto': 'Auto',
+        'opt.auto_efuse': 'Auto (Efuse)', 'opt.none': 'Geen',
+        'opt.minimal': 'Minimaal', 'opt.maximal': 'Maximaal',
+        'opt.normal': 'Normaal', 'opt.level2': 'Level 2',
+        'opt.clockgating': 'Clock Gating', 'opt.powergating': 'Power Gating',
+        'opt.nochange': 'Geen wijziging', 'opt.only24': 'Alleen 2.4 GHz',
+        'opt.only5': 'Alleen 5 GHz', 'opt.dualband': 'Dual-band',
+        'opt.both_bands': 'Beide banden',
+        'opt.1stream': '1 Stream', 'opt.2streams': '2 Streams',
+        'opt.error': 'Error', 'opt.warning': 'Warning', 'opt.notice': 'Notice',
+        'opt.info': 'Info', 'opt.debug': 'Debug',
+        'opt.usb3': 'USB 3.0', 'opt.usb2': 'USB 2.0',
+        'opt.hidden': '(Verborgen)',
+        'stat.tx_data': 'TX Data', 'stat.rx_data': 'RX Data',
+        'stat.tx_pkts': 'TX Pakketten', 'stat.rx_pkts': 'RX Pakketten',
+        'stat.tx_err': 'TX Fouten', 'stat.rx_err': 'RX Fouten',
+        'stat.tx_drop': 'TX Dropped', 'stat.rx_drop': 'RX Dropped',
+        'ph.network': 'Netwerknaam',
+        'ph.password': 'Wachtwoord (leeg voor open)',
+        'scan.click': 'Klik op Scannen...',
+        'scan.scanning': 'Scannen...',
+        'scan.found': 'netwerken gevonden',
+        'scan.none': 'Geen netwerken gevonden',
+        'scan.error': 'Fout bij scannen',
+        'scan.errorfmt': 'Fout: ',
+        'tests.click': 'Klik op "Tests Draaien" om de testsuite te starten...',
+        'tests.running': 'Tests worden uitgevoerd...',
+        'tests.busy': 'Bezig...',
+        'tests.nooutput': 'Geen output',
+        'tests.error': 'Fout bij uitvoeren tests',
+        'tests.passed': 'geslaagd',
+        'tests.failed': 'gefaald',
+        'tests.errors': 'fouten',
+        'tests.skipped': 'overgeslagen',
+        'conn.notconnected': 'Niet verbonden met een netwerk',
+        'toast.enterssid': 'Voer een SSID in',
+        'toast.connected': 'Verbonden met ',
+        'toast.connectfail': 'Verbinden mislukt',
+        'toast.connecterr': 'Fout bij verbinden',
+        'toast.disconnected': 'Verbinding verbroken',
+        'toast.disconnerr': 'Fout bij verbreken',
+        'toast.applied': 'Instellingen toegepast',
+        'toast.applyerr': 'Fout bij toepassen',
+        'toast.nochanges': 'Geen wijzigingen om op te slaan',
+        'toast.saved': 'Instellingen opgeslagen.',
+        'toast.savedrestart': 'Instellingen opgeslagen. Module herstart nodig.',
+        'toast.saveerr': 'Fout bij opslaan',
+        'toast.resetlocal': 'Lokale wijzigingen gewist',
+        'toast.reloading': 'Module wordt herladen...',
+        'toast.reloaded': 'Module succesvol herladen',
+        'toast.reloadfail': 'Herladen mislukt',
+        'toast.reloaderr': 'Fout bij herladen',
+        'adv.pickcat': 'Selecteer een categorie en eigenschap om te configureren.',
+        'adv.pickprop': 'Selecteer een eigenschap om te configureren.',
+        'adv.unavailable': 'Niet beschikbaar — deze parameter is niet gecompileerd in de huidige module.',
+        'adv.modulerestart': 'Module parameter — herstart nodig',
+        'adv.reloadconfirm': 'Module herladen?\\n\\nDe WiFi-verbinding wordt tijdelijk verbroken. De adapter wordt opnieuw geïnitialiseerd met de opgeslagen instellingen.\\n\\nDoorgaan?',
+        'adv.pending_1': ' onopgeslagen wijziging. Klik "Opslaan & Toepassen" om op te slaan, daarna "Module Herladen" om te activeren.',
+        'adv.pending_n': ' onopgeslagen wijzigingen. Klik "Opslaan & Toepassen" om op te slaan, daarna "Module Herladen" om te activeren.',
+        'adv.pending_saved': 'Er zijn opgeslagen wijzigingen die een module herstart vereisen. Klik "Module Herladen" om te activeren.',
+        'adv.cat.wireless': 'Draadloze Modus',
+        'adv.cat.channel': 'Kanaal & Bandbreedte',
+        'adv.cat.power': 'Energiebeheer',
+        'adv.cat.performance': 'Prestaties',
+        'adv.cat.antenna': 'Antenne & Beamforming',
+        'adv.cat.roaming': 'Roaming & Verbinding',
+        'adv.cat.debug': 'Debug & Geavanceerd',
+    }
+};
+
+let LANG = localStorage.getItem('rtw_lang')
+        || (navigator.language && navigator.language.toLowerCase().startsWith('nl') ? 'nl' : 'en');
+
+function t(k) { return (I18N[LANG] && I18N[LANG][k]) || I18N.en[k] || k; }
+
+function applyTranslations() {
+    document.documentElement.setAttribute('lang', LANG);
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        el.textContent = t(el.dataset.i18n);
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        el.placeholder = t(el.dataset.i18nPlaceholder);
+    });
+    document.querySelectorAll('.lang-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.lang === LANG);
+    });
+}
+
+function setLanguage(lang) {
+    if (!I18N[lang]) return;
+    LANG = lang;
+    localStorage.setItem('rtw_lang', lang);
+    applyTranslations();
+    // Re-render anything that was filled in via innerHTML so translated
+    // labels in the dynamic markup also update.
+    refreshStatus();
+    refreshDriverInfo();
+    if (advLoaded) {
+        renderAdvCategories();
+        if (advSelectedCat) {
+            renderAdvProperties(advSelectedCat);
+            if (advSelectedParam) renderAdvEditor(advSelectedCat, advSelectedParam);
+        }
+        updatePendingBanner(Object.keys(advChanges).length > 0);
+    }
+}
+
 function formatBytes(b) {
     if (b < 1024) return b + ' B';
     if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
@@ -967,9 +1222,8 @@ function showToast(msg, ok) {
 }
 
 function switchTab(name) {
-    const map = {overview:'overzicht', networks:'netwerk', settings:'instelling', tests:'test', advanced:'geavanceerd'};
-    document.querySelectorAll('.tab').forEach(t => {
-        t.classList.toggle('active', t.textContent.toLowerCase().includes(map[name] || name));
+    document.querySelectorAll('.tab').forEach(el => {
+        el.classList.toggle('active', el.dataset.tab === name);
     });
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
@@ -985,55 +1239,52 @@ async function refreshStatus() {
         const badge = document.getElementById('status-badge');
 
         if (!d.driver_loaded) {
-            badge.textContent = 'Driver niet geladen';
+            badge.textContent = t('status.driver_off');
             badge.className = 'status-badge badge-err';
             return;
         }
 
         badge.textContent = d.operstate === 'up' || d.operstate === 'dormant'
-            ? 'Verbonden' : 'Niet verbonden';
+            ? t('status.connected') : t('status.disconnected');
         badge.className = 'status-badge ' + (d.connection.ssid ? 'badge-ok' : 'badge-err');
 
-        // Adapter info
         document.getElementById('adapter-info').innerHTML = `
-            <div class="info-row"><span class="info-label">Interface</span><span class="info-value">${d.interface}</span></div>
-            <div class="info-row"><span class="info-label">MAC Adres</span><span class="info-value">${d.mac_address}</span></div>
-            <div class="info-row"><span class="info-label">IP Adres</span><span class="info-value">${d.ip_address || 'Geen'}</span></div>
-            <div class="info-row"><span class="info-label">Status</span><span class="info-value">${d.operstate}</span></div>
-            <div class="info-row"><span class="info-label">MTU</span><span class="info-value">${d.mtu}</span></div>
-            <div class="info-row"><span class="info-label">USB Snelheid</span><span class="info-value">${d.usb_speed_mbps} Mbps</span></div>
-            <div class="info-row"><span class="info-label">USB Apparaat</span><span class="info-value">${d.usb_vendor}:${d.usb_product} (${d.usb_product_name})</span></div>
+            <div class="info-row"><span class="info-label">${t('label.interface')}</span><span class="info-value">${d.interface}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.mac')}</span><span class="info-value">${d.mac_address}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.ip')}</span><span class="info-value">${d.ip_address || t('status.none')}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.status')}</span><span class="info-value">${d.operstate}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.mtu')}</span><span class="info-value">${d.mtu}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.usbspeed')}</span><span class="info-value">${d.usb_speed_mbps} Mbps</span></div>
+            <div class="info-row"><span class="info-label">${t('label.usbdev')}</span><span class="info-value">${d.usb_vendor}:${d.usb_product} (${d.usb_product_name})</span></div>
         `;
 
-        // Connection
         const conn = d.connection;
         let connHtml = '';
         if (conn.ssid) {
             const pct = signalPercent(conn.signal_dbm);
             const col = signalColor(conn.signal_dbm);
             connHtml = `
-                <div class="info-row"><span class="info-label">SSID</span><span class="info-value">${conn.ssid}</span></div>
-                <div class="info-row"><span class="info-label">Signaal</span><span class="info-value">${conn.signal_dbm} dBm</span></div>
+                <div class="info-row"><span class="info-label">${t('th.ssid')}</span><span class="info-value">${conn.ssid}</span></div>
+                <div class="info-row"><span class="info-label">${t('label.signal')}</span><span class="info-value">${conn.signal_dbm} dBm</span></div>
                 <div class="signal-bar"><div class="signal-fill" style="width:${pct}%;background:${col};"></div></div>
-                <div class="info-row"><span class="info-label">Frequentie</span><span class="info-value">${conn.frequency_mhz} MHz</span></div>
-                <div class="info-row"><span class="info-label">TX Bitrate</span><span class="info-value">${conn.tx_bitrate || 'N/A'}</span></div>
+                <div class="info-row"><span class="info-label">${t('label.freq')}</span><span class="info-value">${conn.frequency_mhz} MHz</span></div>
+                <div class="info-row"><span class="info-label">${t('label.txbitrate')}</span><span class="info-value">${conn.tx_bitrate || 'N/A'}</span></div>
             `;
         } else {
-            connHtml = '<div style="color:#64748b;padding:20px;text-align:center;">Niet verbonden met een netwerk</div>';
+            connHtml = `<div style="color:#64748b;padding:20px;text-align:center;">${t('conn.notconnected')}</div>`;
         }
         document.getElementById('connection-info').innerHTML = connHtml;
 
-        // Stats
         const s = d.statistics;
         document.getElementById('stats-info').innerHTML = `
-            <div class="stat-box"><div class="stat-value">${formatBytes(s.tx_bytes)}</div><div class="stat-label">TX Data</div></div>
-            <div class="stat-box"><div class="stat-value">${formatBytes(s.rx_bytes)}</div><div class="stat-label">RX Data</div></div>
-            <div class="stat-box"><div class="stat-value">${s.tx_packets.toLocaleString()}</div><div class="stat-label">TX Pakketten</div></div>
-            <div class="stat-box"><div class="stat-value">${s.rx_packets.toLocaleString()}</div><div class="stat-label">RX Pakketten</div></div>
-            <div class="stat-box"><div class="stat-value">${s.tx_errors}</div><div class="stat-label">TX Fouten</div></div>
-            <div class="stat-box"><div class="stat-value">${s.rx_errors}</div><div class="stat-label">RX Fouten</div></div>
-            <div class="stat-box"><div class="stat-value">${s.tx_dropped}</div><div class="stat-label">TX Dropped</div></div>
-            <div class="stat-box"><div class="stat-value">${s.rx_dropped}</div><div class="stat-label">RX Dropped</div></div>
+            <div class="stat-box"><div class="stat-value">${formatBytes(s.tx_bytes)}</div><div class="stat-label">${t('stat.tx_data')}</div></div>
+            <div class="stat-box"><div class="stat-value">${formatBytes(s.rx_bytes)}</div><div class="stat-label">${t('stat.rx_data')}</div></div>
+            <div class="stat-box"><div class="stat-value">${s.tx_packets.toLocaleString()}</div><div class="stat-label">${t('stat.tx_pkts')}</div></div>
+            <div class="stat-box"><div class="stat-value">${s.rx_packets.toLocaleString()}</div><div class="stat-label">${t('stat.rx_pkts')}</div></div>
+            <div class="stat-box"><div class="stat-value">${s.tx_errors}</div><div class="stat-label">${t('stat.tx_err')}</div></div>
+            <div class="stat-box"><div class="stat-value">${s.rx_errors}</div><div class="stat-label">${t('stat.rx_err')}</div></div>
+            <div class="stat-box"><div class="stat-value">${s.tx_dropped}</div><div class="stat-label">${t('stat.tx_drop')}</div></div>
+            <div class="stat-box"><div class="stat-value">${s.rx_dropped}</div><div class="stat-label">${t('stat.rx_drop')}</div></div>
         `;
 
         prevStats = s;
@@ -1047,32 +1298,32 @@ async function refreshDriverInfo() {
         const r = await fetch('/api/driver');
         const d = await r.json();
         document.getElementById('driver-info').innerHTML = `
-            <div class="info-row"><span class="info-label">Module</span><span class="info-value">${d.module_name}</span></div>
-            <div class="info-row"><span class="info-label">Driver</span><span class="info-value">${d.driver_name}</span></div>
-            <div class="info-row"><span class="info-label">Kernel</span><span class="info-value">${d.kernel_version}</span></div>
-            <div class="info-row"><span class="info-label">Srcversion</span><span class="info-value" style="font-size:0.75rem;">${d.srcversion}</span></div>
-            <div class="info-row"><span class="info-label">Versie</span><span class="info-value">${d.modinfo?.version || 'N/A'}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.module')}</span><span class="info-value">${d.module_name}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.driver')}</span><span class="info-value">${d.driver_name}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.kernel')}</span><span class="info-value">${d.kernel_version}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.srcversion')}</span><span class="info-value" style="font-size:0.75rem;">${d.srcversion}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.version')}</span><span class="info-value">${d.modinfo?.version || 'N/A'}</span></div>
         `;
     } catch(e) {}
 }
 
 async function doScan() {
-    document.getElementById('scan-status').innerHTML = '<span class="spinner"></span> Scannen...';
+    document.getElementById('scan-status').innerHTML = '<span class="spinner"></span> ' + t('scan.scanning');
     document.getElementById('network-list').innerHTML = '';
     try {
         const r = await fetch('/api/scan');
         const d = await r.json();
         if (d.error) {
-            document.getElementById('scan-status').textContent = 'Fout: ' + d.error;
+            document.getElementById('scan-status').textContent = t('scan.errorfmt') + d.error;
             return;
         }
-        document.getElementById('scan-status').textContent = d.count + ' netwerken gevonden';
+        document.getElementById('scan-status').textContent = d.count + ' ' + t('scan.found');
         let html = '';
         for (const n of d.networks) {
             const pct = signalPercent(n.signal);
             const col = signalColor(n.signal);
             html += `<tr>
-                <td><strong>${n.ssid || '(Verborgen)'}</strong></td>
+                <td><strong>${n.ssid || t('opt.hidden')}</strong></td>
                 <td style="font-family:monospace;font-size:0.8rem;">${n.bssid}</td>
                 <td>
                     <div style="display:flex;align-items:center;gap:8px;">
@@ -1084,12 +1335,12 @@ async function doScan() {
                 </td>
                 <td>${n.frequency || '?'} MHz</td>
                 <td>${n.security}</td>
-                <td><button class="btn btn-success btn-sm" onclick="quickConnect('${n.ssid.replace(/'/g,"\\\\'")}')">Verbind</button></td>
+                <td><button class="btn btn-success btn-sm" onclick="quickConnect('${n.ssid.replace(/'/g,"\\\\'")}')">${t('btn.quickconnect')}</button></td>
             </tr>`;
         }
-        document.getElementById('network-list').innerHTML = html || '<tr><td colspan="6">Geen netwerken gevonden</td></tr>';
+        document.getElementById('network-list').innerHTML = html || `<tr><td colspan="6">${t('scan.none')}</td></tr>`;
     } catch(e) {
-        document.getElementById('scan-status').textContent = 'Fout bij scannen';
+        document.getElementById('scan-status').textContent = t('scan.error');
     }
 }
 
@@ -1101,7 +1352,7 @@ function quickConnect(ssid) {
 async function doConnect() {
     const ssid = document.getElementById('connect-ssid').value;
     const pass = document.getElementById('connect-pass').value;
-    if (!ssid) { showToast('Voer een SSID in', false); return; }
+    if (!ssid) { showToast(t('toast.enterssid'), false); return; }
 
     try {
         const r = await fetch('/api/connect', {
@@ -1111,23 +1362,23 @@ async function doConnect() {
         });
         const d = await r.json();
         if (d.success) {
-            showToast('Verbonden met ' + ssid, true);
+            showToast(t('toast.connected') + ssid, true);
             refreshStatus();
         } else {
-            showToast(d.error || d.warning || 'Verbinden mislukt', false);
+            showToast(d.error || d.warning || t('toast.connectfail'), false);
         }
     } catch(e) {
-        showToast('Fout bij verbinden', false);
+        showToast(t('toast.connecterr'), false);
     }
 }
 
 async function doDisconnect() {
     try {
         await fetch('/api/disconnect', {method: 'POST'});
-        showToast('Verbinding verbroken', true);
+        showToast(t('toast.disconnected'), true);
         refreshStatus();
     } catch(e) {
-        showToast('Fout bij verbreken', false);
+        showToast(t('toast.disconnerr'), false);
     }
 }
 
@@ -1144,18 +1395,18 @@ async function applySettings() {
             body: JSON.stringify(data)
         });
         const d = await r.json();
-        showToast('Instellingen toegepast', true);
+        showToast(t('toast.applied'), true);
         refreshStatus();
     } catch(e) {
-        showToast('Fout bij toepassen', false);
+        showToast(t('toast.applyerr'), false);
     }
 }
 
 async function runTests() {
     const btn = document.getElementById('btn-run-tests');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Bezig...';
-    document.getElementById('test-output').textContent = 'Tests worden uitgevoerd...';
+    btn.innerHTML = '<span class="spinner"></span> ' + t('tests.busy');
+    document.getElementById('test-output').textContent = t('tests.running');
     document.getElementById('test-summary').textContent = '';
 
     try {
@@ -1168,22 +1419,22 @@ async function runTests() {
                           .replace(/FAIL/g, '<span class="test-fail">FAIL</span>')
                           .replace(/ERROR/g, '<span class="test-fail">ERROR</span>');
         }
-        document.getElementById('test-output').innerHTML = html || d.stderr || 'Geen output';
+        document.getElementById('test-output').innerHTML = html || d.stderr || t('tests.nooutput');
 
         if (d.report) {
             const rp = d.report;
             const color = rp.failed === 0 && rp.errors === 0 ? '#6ee7b7' : '#fca5a5';
             document.getElementById('test-summary').innerHTML =
                 `<span style="color:${color};font-size:1.1rem;font-weight:600;">` +
-                `${rp.passed}/${rp.total} geslaagd</span> | ` +
-                `${rp.failed} gefaald | ${rp.errors} fouten | ${rp.skipped} overgeslagen`;
+                `${rp.passed}/${rp.total} ${t('tests.passed')}</span> | ` +
+                `${rp.failed} ${t('tests.failed')} | ${rp.errors} ${t('tests.errors')} | ${rp.skipped} ${t('tests.skipped')}`;
         }
     } catch(e) {
-        document.getElementById('test-output').textContent = 'Fout bij uitvoeren tests';
+        document.getElementById('test-output').textContent = t('tests.error');
     }
 
     btn.disabled = false;
-    btn.textContent = 'Tests Draaien';
+    btn.textContent = t('btn.runtests');
 }
 
 // ── Advanced Tab Logic ───────────────────────────────────────────────
@@ -1194,68 +1445,158 @@ let advChanges = {};
 let advSelectedCat = null;
 let advSelectedParam = null;
 
+// All labels and descriptions carry both languages. Helper L() / D() pull
+// the active language at render time so a language switch immediately
+// re-skins the advanced tab without a refetch.
+function L(p) { return (p.label && (p.label[LANG] || p.label.en)) || ''; }
+function D(p) { return (p.desc  && (p.desc[LANG]  || p.desc.en))  || ''; }
+
 const ADV_SETTINGS = {
     wireless: {
-        label: 'Draadloze Modus',
+        labelKey: 'adv.cat.wireless',
         params: {
-            rtw_ht_enable:     { label: '802.11n (HT)',     desc: 'Schakel 802.11n High Throughput in of uit. Vereist voor WiFi 4 snelheden boven 54 Mbps.' },
-            rtw_vht_enable:    { label: '802.11ac (VHT)',   desc: 'Schakel 802.11ac Very High Throughput in of uit. Vereist voor WiFi 5 snelheden tot 866 Mbps op 80 MHz.' },
-            rtw_he_enable:     { label: '802.11ax (HE)',    desc: 'Schakel 802.11ax High Efficiency in of uit. Dit is WiFi 6 \u2014 de nieuwste standaard met hogere snelheden en betere prestaties in drukke omgevingen.' },
-            rtw_wireless_mode: { label: 'Draadloze Modus (bitmask)', desc: 'Bitmask voor ondersteunde draadloze modi. 0 = automatisch (alle modi). Wijzig alleen als u specifieke modi wilt forceren.' },
-            rtw_band_type:     { label: 'Frequentieband',   desc: 'Kies welke frequentiebanden de adapter mag gebruiken. Dual-band (standaard) biedt de beste compatibiliteit.' },
+            rtw_ht_enable:     {
+                label: { en: '802.11n (HT)', nl: '802.11n (HT)' },
+                desc:  { en: 'Enable or disable 802.11n High Throughput. Required for WiFi 4 speeds above 54 Mbps.',
+                         nl: 'Schakel 802.11n High Throughput in of uit. Vereist voor WiFi 4 snelheden boven 54 Mbps.' } },
+            rtw_vht_enable:    {
+                label: { en: '802.11ac (VHT)', nl: '802.11ac (VHT)' },
+                desc:  { en: 'Enable or disable 802.11ac Very High Throughput. Required for WiFi 5 speeds up to 866 Mbps on 80 MHz.',
+                         nl: 'Schakel 802.11ac Very High Throughput in of uit. Vereist voor WiFi 5 snelheden tot 866 Mbps op 80 MHz.' } },
+            rtw_he_enable:     {
+                label: { en: '802.11ax (HE)', nl: '802.11ax (HE)' },
+                desc:  { en: 'Enable or disable 802.11ax High Efficiency. This is WiFi 6 \u2014 the newest standard with higher speeds and better behaviour in crowded environments.',
+                         nl: 'Schakel 802.11ax High Efficiency in of uit. Dit is WiFi 6 \u2014 de nieuwste standaard met hogere snelheden en betere prestaties in drukke omgevingen.' } },
+            rtw_wireless_mode: {
+                label: { en: 'Wireless mode (bitmask)', nl: 'Draadloze Modus (bitmask)' },
+                desc:  { en: 'Bitmask of supported wireless modes. 0 = automatic (all modes). Change only if you want to force specific modes.',
+                         nl: 'Bitmask voor ondersteunde draadloze modi. 0 = automatisch (alle modi). Wijzig alleen als u specifieke modi wilt forceren.' } },
+            rtw_band_type:     {
+                label: { en: 'Frequency band', nl: 'Frequentieband' },
+                desc:  { en: 'Pick which frequency bands the adapter may use. Dual-band (default) gives the best compatibility.',
+                         nl: 'Kies welke frequentiebanden de adapter mag gebruiken. Dual-band (standaard) biedt de beste compatibiliteit.' } },
         }
     },
     channel: {
-        label: 'Kanaal & Bandbreedte',
+        labelKey: 'adv.cat.channel',
         params: {
-            rtw_channel:       { label: 'Standaard Kanaal',   desc: 'Het standaardkanaal bij opstarten. 0 = automatisch. Voor 2.4 GHz: 1\u201313. Voor 5 GHz: 36, 40, 44, 48, 52, etc.' },
-            rtw_bw_mode:       { label: 'Kanaal Breedte (bitmask)', desc: 'Bitmask voor kanaalbreedte per band. Bits 0\u20133: 2.4 GHz (0x01=20MHz, 0x03=40MHz). Bits 4\u20137: 5 GHz (0x10=20MHz, 0x30=40MHz, 0x70=80MHz). Standaard 0x31 (40 MHz 2.4G + 80 MHz 5G).' },
-            rtw_channel_plan:  { label: 'Kanaalplan',         desc: 'Reguleringskanaalplan (0x00\u20130xFF). Bepaalt welke kanalen beschikbaar zijn op basis van regio. 0xFF = automatisch.' },
-            rtw_country_code:  { label: 'Landcode',           desc: 'ISO 3166-1 alpha-2 landcode (bijv. NL, US, DE, GB). Bepaalt reguleringsdomein en beschikbare kanalen/vermogen.' },
+            rtw_channel:       {
+                label: { en: 'Default channel', nl: 'Standaard Kanaal' },
+                desc:  { en: 'Default channel at startup. 0 = automatic. For 2.4 GHz: 1\u201313. For 5 GHz: 36, 40, 44, 48, 52, \u2026',
+                         nl: 'Het standaardkanaal bij opstarten. 0 = automatisch. Voor 2.4 GHz: 1\u201313. Voor 5 GHz: 36, 40, 44, 48, 52, etc.' } },
+            rtw_bw_mode:       {
+                label: { en: 'Channel width (bitmask)', nl: 'Kanaal Breedte (bitmask)' },
+                desc:  { en: 'Bitmask of channel width per band. Bits 0\u20133: 2.4 GHz (0x01=20MHz, 0x03=40MHz). Bits 4\u20137: 5 GHz (0x10=20MHz, 0x30=40MHz, 0x70=80MHz). Default 0x31 (40 MHz 2.4G + 80 MHz 5G).',
+                         nl: 'Bitmask voor kanaalbreedte per band. Bits 0\u20133: 2.4 GHz (0x01=20MHz, 0x03=40MHz). Bits 4\u20137: 5 GHz (0x10=20MHz, 0x30=40MHz, 0x70=80MHz). Standaard 0x31 (40 MHz 2.4G + 80 MHz 5G).' } },
+            rtw_channel_plan:  {
+                label: { en: 'Channel plan', nl: 'Kanaalplan' },
+                desc:  { en: 'Regulatory channel plan (0x00\u20130xFF). Decides which channels are available per region. 0xFF = automatic.',
+                         nl: 'Reguleringskanaalplan (0x00\u20130xFF). Bepaalt welke kanalen beschikbaar zijn op basis van regio. 0xFF = automatisch.' } },
+            rtw_country_code:  {
+                label: { en: 'Country code', nl: 'Landcode' },
+                desc:  { en: 'ISO 3166-1 alpha-2 country code (e.g. NL, US, DE, GB). Decides regulatory domain and available channels / TX power.',
+                         nl: 'ISO 3166-1 alpha-2 landcode (bijv. NL, US, DE, GB). Bepaalt reguleringsdomein en beschikbare kanalen/vermogen.' } },
         }
     },
     power: {
-        label: 'Energiebeheer',
+        labelKey: 'adv.cat.power',
         params: {
-            rtw_power_mgnt:    { label: 'Power Management Modus', desc: 'Stel het energiebeheerniveau in. Uit = maximale prestaties maar hoger verbruik. Maximaal = langste batterijduur maar mogelijk lagere throughput.' },
-            rtw_ips_mode:      { label: 'Idle Power Save (IPS)', desc: 'Energiebesparing wanneer de adapter inactief is. Normaal schakelt de radio uit bij inactiviteit. Level 2 is agressiever.' },
-            rtw_lps_level:     { label: 'Low Power Save Niveau', desc: 'Energiebesparingsniveau tijdens verbinding. Clock Gating bespaart matig. Power Gating bespaart maximaal maar kan latentie verhogen.' },
+            rtw_power_mgnt:    {
+                label: { en: 'Power management mode', nl: 'Power Management Modus' },
+                desc:  { en: 'Power management level. Off = maximum performance but higher consumption. Maximum = longest battery life but possibly lower throughput.',
+                         nl: 'Stel het energiebeheerniveau in. Uit = maximale prestaties maar hoger verbruik. Maximaal = langste batterijduur maar mogelijk lagere throughput.' } },
+            rtw_ips_mode:      {
+                label: { en: 'Idle Power Save (IPS)', nl: 'Idle Power Save (IPS)' },
+                desc:  { en: 'Power saving when the adapter is idle. Normal turns the radio off when idle. Level 2 is more aggressive.',
+                         nl: 'Energiebesparing wanneer de adapter inactief is. Normaal schakelt de radio uit bij inactiviteit. Level 2 is agressiever.' } },
+            rtw_lps_level:     {
+                label: { en: 'Low Power Save level', nl: 'Low Power Save Niveau' },
+                desc:  { en: 'Power saving level while connected. Clock Gating saves moderately. Power Gating saves the most but can increase latency.',
+                         nl: 'Energiebesparingsniveau tijdens verbinding. Clock Gating bespaart matig. Power Gating bespaart maximaal maar kan latentie verhogen.' } },
         }
     },
     performance: {
-        label: 'Prestaties',
+        labelKey: 'adv.cat.performance',
         params: {
-            rtw_ampdu_enable:  { label: 'AMPDU',             desc: 'Aggregate MAC Protocol Data Unit. Bundelt meerdere frames in \u00e9\u00e9n transmissie voor hogere throughput. Aanbevolen: Aan.' },
-            rtw_en_napi:       { label: 'NAPI',              desc: 'New API voor netwerkinterruptverwerking. Vermindert CPU-belasting bij hoge pakketsnelheden. Aanbevolen: Aan.' },
-            rtw_en_gro:        { label: 'GRO',               desc: 'Generic Receive Offload. Combineert kleine ontvangen pakketten tot grotere voor effici\u00ebntere verwerking. Aanbevolen: Aan.' },
-            rtw_switch_usb_mode: { label: 'USB Modus',       desc: 'Forceer USB 2.0 of 3.0 modus. USB 3.0 biedt hogere snelheden maar kan interferentie op 2.4 GHz veroorzaken. Geen wijziging = automatisch.' },
-            rtw_wmm_enable:    { label: 'WMM / QoS',        desc: 'WiFi Multimedia / Quality of Service. Prioriteert spraak- en videoverkeer boven bulkdata. Aanbevolen: Aan.' },
+            rtw_ampdu_enable:  {
+                label: { en: 'AMPDU', nl: 'AMPDU' },
+                desc:  { en: 'Aggregate MAC Protocol Data Unit. Bundles multiple frames into one transmission for higher throughput. Recommended: On.',
+                         nl: 'Aggregate MAC Protocol Data Unit. Bundelt meerdere frames in \u00e9\u00e9n transmissie voor hogere throughput. Aanbevolen: Aan.' } },
+            rtw_en_napi:       {
+                label: { en: 'NAPI', nl: 'NAPI' },
+                desc:  { en: 'New API for network-interrupt handling. Reduces CPU load at high packet rates. Recommended: On.',
+                         nl: 'New API voor netwerkinterruptverwerking. Vermindert CPU-belasting bij hoge pakketsnelheden. Aanbevolen: Aan.' } },
+            rtw_en_gro:        {
+                label: { en: 'GRO', nl: 'GRO' },
+                desc:  { en: 'Generic Receive Offload. Coalesces small received packets into larger ones for more efficient processing. Recommended: On.',
+                         nl: 'Generic Receive Offload. Combineert kleine ontvangen pakketten tot grotere voor effici\u00ebntere verwerking. Aanbevolen: Aan.' } },
+            rtw_switch_usb_mode: {
+                label: { en: 'USB mode', nl: 'USB Modus' },
+                desc:  { en: 'Force USB 2.0 or 3.0 mode. USB 3.0 gives higher speeds but can cause interference on 2.4 GHz. No change = automatic.',
+                         nl: 'Forceer USB 2.0 of 3.0 modus. USB 3.0 biedt hogere snelheden maar kan interferentie op 2.4 GHz veroorzaken. Geen wijziging = automatisch.' } },
+            rtw_wmm_enable:    {
+                label: { en: 'WMM / QoS', nl: 'WMM / QoS' },
+                desc:  { en: 'WiFi Multimedia / Quality of Service. Prioritises voice and video traffic over bulk data. Recommended: On.',
+                         nl: 'WiFi Multimedia / Quality of Service. Prioriteert spraak- en videoverkeer boven bulkdata. Aanbevolen: Aan.' } },
         }
     },
     antenna: {
-        label: 'Antenne & Beamforming',
+        labelKey: 'adv.cat.antenna',
         params: {
-            rtw_beamform_cap:  { label: 'Beamforming Capaciteit', desc: 'Beamforming bitmask. 0 = Uit. Veelgebruikte waarden: 0x82 = SU Beamformee, 0x8A = SU+MU Beamformee. Beamforming richt het signaal naar het apparaat voor beter bereik.' },
-            rtw_dyn_txbf:      { label: 'Dynamische TX Beamforming', desc: 'Dynamisch schakelen tussen beamforming-modi op basis van kanaalcondities. Aanbevolen: Aan als beamforming actief is.' },
-            rtw_tx_nss:        { label: 'TX Spatial Streams', desc: 'Aantal zend-spatial streams. Auto laat de driver kiezen. 2 streams = maximale snelheid. 1 stream = lager verbruik.' },
-            rtw_rx_nss:        { label: 'RX Spatial Streams', desc: 'Aantal ontvangst-spatial streams. Auto laat de driver kiezen. 2 streams = maximale snelheid.' },
-            rtw_antdiv_cfg:    { label: 'Antenne Diversiteit', desc: 'Antenne-diversiteitconfiguratie. Aan = driver kiest beste antenne. Auto (Efuse) = gebruik fabrieksinstellingen.' },
-            rtw_rx_stbc:       { label: 'RX STBC',           desc: 'Space-Time Block Coding voor ontvangst. Verbetert betrouwbaarheid en bereik door redundantie over antennes. Beide banden aanbevolen.' },
+            rtw_beamform_cap:  {
+                label: { en: 'Beamforming capability', nl: 'Beamforming Capaciteit' },
+                desc:  { en: 'Beamforming bitmask. 0 = Off. Common values: 0x82 = SU Beamformee, 0x8A = SU+MU Beamformee. Beamforming aims the signal at the device for better range.',
+                         nl: 'Beamforming bitmask. 0 = Uit. Veelgebruikte waarden: 0x82 = SU Beamformee, 0x8A = SU+MU Beamformee. Beamforming richt het signaal naar het apparaat voor beter bereik.' } },
+            rtw_dyn_txbf:      {
+                label: { en: 'Dynamic TX Beamforming', nl: 'Dynamische TX Beamforming' },
+                desc:  { en: 'Dynamically switch between beamforming modes based on channel conditions. Recommended: On when beamforming is active.',
+                         nl: 'Dynamisch schakelen tussen beamforming-modi op basis van kanaalcondities. Aanbevolen: Aan als beamforming actief is.' } },
+            rtw_tx_nss:        {
+                label: { en: 'TX Spatial Streams', nl: 'TX Spatial Streams' },
+                desc:  { en: 'Number of transmit spatial streams. Auto lets the driver choose. 2 streams = maximum speed. 1 stream = lower power.',
+                         nl: 'Aantal zend-spatial streams. Auto laat de driver kiezen. 2 streams = maximale snelheid. 1 stream = lager verbruik.' } },
+            rtw_rx_nss:        {
+                label: { en: 'RX Spatial Streams', nl: 'RX Spatial Streams' },
+                desc:  { en: 'Number of receive spatial streams. Auto lets the driver choose. 2 streams = maximum speed.',
+                         nl: 'Aantal ontvangst-spatial streams. Auto laat de driver kiezen. 2 streams = maximale snelheid.' } },
+            rtw_antdiv_cfg:    {
+                label: { en: 'Antenna diversity', nl: 'Antenne Diversiteit' },
+                desc:  { en: 'Antenna diversity configuration. On = driver picks the best antenna. Auto (Efuse) = use factory settings.',
+                         nl: 'Antenne-diversiteitconfiguratie. Aan = driver kiest beste antenne. Auto (Efuse) = gebruik fabrieksinstellingen.' } },
+            rtw_rx_stbc:       {
+                label: { en: 'RX STBC', nl: 'RX STBC' },
+                desc:  { en: 'Space-Time Block Coding on receive. Improves reliability and range by adding redundancy across antennas. Both bands recommended.',
+                         nl: 'Space-Time Block Coding voor ontvangst. Verbetert betrouwbaarheid en bereik door redundantie over antennes. Beide banden aanbevolen.' } },
         }
     },
     roaming: {
-        label: 'Roaming & Verbinding',
+        labelKey: 'adv.cat.roaming',
         params: {
-            rtw_max_roaming_times: { label: 'Max Roaming Pogingen', desc: 'Maximum aantal keren dat de adapter probeert te roamen naar een beter access point. 0 = roaming uitgeschakeld. Hogere waarden = agressiever roaming.' },
-            rtw_btcoex_enable: { label: 'Bluetooth Coexistentie', desc: 'Schakel WiFi/Bluetooth coexistentie in. Voorkomt interferentie wanneer Bluetooth tegelijk actief is. Auto = gebruik fabrieksinstellingen.' },
+            rtw_max_roaming_times: {
+                label: { en: 'Max roaming attempts', nl: 'Max Roaming Pogingen' },
+                desc:  { en: 'Maximum number of times the adapter tries to roam to a better access point. 0 = roaming disabled. Higher values = more aggressive roaming.',
+                         nl: 'Maximum aantal keren dat de adapter probeert te roamen naar een beter access point. 0 = roaming uitgeschakeld. Hogere waarden = agressiever roaming.' } },
+            rtw_btcoex_enable: {
+                label: { en: 'Bluetooth coexistence', nl: 'Bluetooth Coexistentie' },
+                desc:  { en: 'Enable WiFi/Bluetooth coexistence. Prevents interference when Bluetooth is active. Auto = use factory settings.',
+                         nl: 'Schakel WiFi/Bluetooth coexistentie in. Voorkomt interferentie wanneer Bluetooth tegelijk actief is. Auto = gebruik fabrieksinstellingen.' } },
         }
     },
     debug: {
-        label: 'Debug & Geavanceerd',
+        labelKey: 'adv.cat.debug',
         params: {
-            rtw_drv_log_level: { label: 'Log Niveau',        desc: 'Driver log-niveau in dmesg/kernel log. Geen = alleen kritieke fouten. Debug = volledige diagnostiek (vertraagt de driver).' },
-            rtw_tx_pwr_by_rate: { label: 'TX Power by Rate', desc: 'Pas zendvermogen aan per datasnelheid. Aan = volg de power-by-rate tabel. Auto = gebruik fabrieksinstellingen uit efuse.' },
-            rtw_tx_pwr_lmt_enable: { label: 'TX Power Limiet', desc: 'Beperk zendvermogen volgens reguleringslimieten. Aanbevolen: Aan of Auto om te voldoen aan lokale wetgeving.' },
+            rtw_drv_log_level: {
+                label: { en: 'Log level', nl: 'Log Niveau' },
+                desc:  { en: 'Driver log level in dmesg / kernel log. None = critical errors only. Debug = full diagnostics (slows the driver).',
+                         nl: 'Driver log-niveau in dmesg/kernel log. Geen = alleen kritieke fouten. Debug = volledige diagnostiek (vertraagt de driver).' } },
+            rtw_tx_pwr_by_rate: {
+                label: { en: 'TX Power by Rate', nl: 'TX Power by Rate' },
+                desc:  { en: 'Adjust TX power per data rate. On = follow the power-by-rate table. Auto = use factory settings from efuse.',
+                         nl: 'Pas zendvermogen aan per datasnelheid. Aan = volg de power-by-rate tabel. Auto = gebruik fabrieksinstellingen uit efuse.' } },
+            rtw_tx_pwr_lmt_enable: {
+                label: { en: 'TX Power Limit', nl: 'TX Power Limiet' },
+                desc:  { en: 'Cap TX power according to regulatory limits. Recommended: On or Auto to comply with local law.',
+                         nl: 'Beperk zendvermogen volgens reguleringslimieten. Aanbevolen: Aan of Auto om te voldoen aan lokale wetgeving.' } },
         }
     }
 };
@@ -1284,7 +1625,7 @@ function renderAdvCategories() {
     let html = '';
     for (const [key, cat] of Object.entries(ADV_SETTINGS)) {
         html += '<div class="adv-cat' + (advSelectedCat === key ? ' active' : '') +
-                '" onclick="selectAdvCategory(\\''+key+'\\')">'+cat.label+'</div>';
+                '" onclick="selectAdvCategory(\\''+key+'\\')">'+t(cat.labelKey)+'</div>';
     }
     el.innerHTML = html;
 }
@@ -1294,7 +1635,7 @@ function selectAdvCategory(key) {
     advSelectedParam = null;
     renderAdvCategories();
     renderAdvProperties(key);
-    document.getElementById('adv-editor').innerHTML = '<div class="adv-empty">Selecteer een eigenschap om te configureren.</div>';
+    document.getElementById('adv-editor').innerHTML = `<div class="adv-empty">${t('adv.pickprop')}</div>`;
 }
 
 function renderAdvProperties(catKey) {
@@ -1306,7 +1647,7 @@ function renderAdvProperties(catKey) {
         const modified = pname in advChanges;
         html += '<div class="adv-prop' + (advSelectedParam === pname ? ' active' : '') +
                 '" onclick="selectAdvParam(\\''+catKey+'\\',\\''+pname+'\\')">' +
-                '<span>'+pdef.label+'</span>' +
+                '<span>'+L(pdef)+'</span>' +
                 (modified ? '<span class="adv-modified-dot"></span>' : '') +
                 '</div>';
     }
@@ -1327,20 +1668,19 @@ function renderAdvEditor(catKey, pname) {
     const isAvailable = paramData.current !== null && paramData.current !== undefined;
 
     if (!isAvailable) {
-        el.innerHTML = '<div class="adv-editor-label">Eigenschap</div>' +
-            '<div class="adv-editor-name">'+pdef.label+'</div>' +
-            '<div style="color:#fca5a5;padding:12px;background:#7f1d1d;border-radius:8px;">Niet beschikbaar \u2014 deze parameter is niet gecompileerd in de huidige module.</div>' +
-            '<div class="adv-desc" style="margin-top:auto;">'+pdef.desc+'</div>';
+        el.innerHTML = '<div class="adv-editor-label">'+t('label.property')+'</div>' +
+            '<div class="adv-editor-name">'+L(pdef)+'</div>' +
+            '<div style="color:#fca5a5;padding:12px;background:#7f1d1d;border-radius:8px;">'+t('adv.unavailable')+'</div>' +
+            '<div class="adv-desc" style="margin-top:auto;">'+D(pdef)+'</div>';
         return;
     }
 
     let inputHtml = '';
-    // Check if this param has select options from the server-side ADVANCED_PARAMS
     const serverOpts = getParamOptions(pname);
     if (serverOpts) {
         inputHtml = '<select onchange="advValueChanged(\\''+pname+'\\', this.value)">';
-        for (const [val, label] of Object.entries(serverOpts)) {
-            inputHtml += '<option value="'+val+'"'+(String(currentVal)===val?' selected':'')+'>'+label+' ('+val+')</option>';
+        for (const [val, optKey] of Object.entries(serverOpts)) {
+            inputHtml += '<option value="'+val+'"'+(String(currentVal)===val?' selected':'')+'>'+t(optKey)+' ('+val+')</option>';
         }
         inputHtml += '</select>';
     } else {
@@ -1348,45 +1688,45 @@ function renderAdvEditor(catKey, pname) {
     }
 
     const pendingVal = paramData.pending;
-    let statusHtml = '<span class="badge-module">Module parameter \u2014 herstart nodig</span>';
+    const statusHtml = '<span class="badge-module">'+t('adv.modulerestart')+'</span>';
     let pendingHtml = '';
     if (pendingVal !== undefined && pendingVal !== null && String(pendingVal) !== String(paramData.current)) {
-        pendingHtml = '<div class="adv-current" style="color:#fbbf24;">Opgeslagen (wacht op herstart): '+pendingVal+'</div>';
+        pendingHtml = '<div class="adv-current" style="color:#fbbf24;">'+t('label.pending')+': '+pendingVal+'</div>';
     }
 
     el.innerHTML =
-        '<div class="adv-editor-label">Eigenschap</div>' +
-        '<div class="adv-editor-name">'+pdef.label+' '+statusHtml+'</div>' +
+        '<div class="adv-editor-label">'+t('label.property')+'</div>' +
+        '<div class="adv-editor-name">'+L(pdef)+' '+statusHtml+'</div>' +
         '<div class="adv-editor-input">'+inputHtml+'</div>' +
-        '<div class="adv-current">Huidige waarde (actief): '+paramData.current+'</div>' +
+        '<div class="adv-current">'+t('label.current')+': '+paramData.current+'</div>' +
         pendingHtml +
-        '<div class="adv-desc">'+pdef.desc+'</div>';
+        '<div class="adv-desc">'+D(pdef)+'</div>';
 }
 
 function getParamOptions(pname) {
-    // Hardcoded options matching the Python ADVANCED_PARAMS
+    // Each option value maps to an i18n key resolved at render time.
     const opts = {
-        rtw_ht_enable: {'0':'Uit','1':'Aan'},
-        rtw_vht_enable: {'0':'Uit','1':'Aan','2':'Auto'},
-        rtw_he_enable: {'0':'Uit','1':'Aan','2':'Auto'},
-        rtw_band_type: {'1':'Alleen 2.4 GHz','2':'Alleen 5 GHz','3':'Dual-band'},
-        rtw_power_mgnt: {'0':'Uit','1':'Minimaal','2':'Maximaal'},
-        rtw_ips_mode: {'0':'Geen','1':'Normaal','2':'Level 2'},
-        rtw_lps_level: {'0':'Normaal','1':'Clock Gating','2':'Power Gating'},
-        rtw_ampdu_enable: {'0':'Uit','1':'Aan'},
-        rtw_en_napi: {'0':'Uit','1':'Aan'},
-        rtw_en_gro: {'0':'Uit','1':'Aan'},
-        rtw_switch_usb_mode: {'0':'Geen wijziging','1':'USB 3.0','2':'USB 2.0'},
-        rtw_wmm_enable: {'0':'Uit','1':'Aan'},
-        rtw_dyn_txbf: {'0':'Uit','1':'Aan'},
-        rtw_tx_nss: {'0':'Auto','1':'1 Stream','2':'2 Streams'},
-        rtw_rx_nss: {'0':'Auto','1':'1 Stream','2':'2 Streams'},
-        rtw_antdiv_cfg: {'0':'Uit','1':'Aan','2':'Auto (Efuse)'},
-        rtw_rx_stbc: {'0':'Uit','1':'Alleen 2.4 GHz','2':'Alleen 5 GHz','3':'Beide banden'},
-        rtw_btcoex_enable: {'0':'Uit','1':'Aan','2':'Auto (Efuse)'},
-        rtw_drv_log_level: {'0':'Geen','1':'Error','2':'Warning','3':'Notice','4':'Info','5':'Debug'},
-        rtw_tx_pwr_by_rate: {'0':'Uit','1':'Aan','2':'Auto (Efuse)'},
-        rtw_tx_pwr_lmt_enable: {'0':'Uit','1':'Aan','2':'Auto (Efuse)'},
+        rtw_ht_enable:     {'0':'opt.off','1':'opt.on'},
+        rtw_vht_enable:    {'0':'opt.off','1':'opt.on','2':'opt.auto'},
+        rtw_he_enable:     {'0':'opt.off','1':'opt.on','2':'opt.auto'},
+        rtw_band_type:     {'1':'opt.only24','2':'opt.only5','3':'opt.dualband'},
+        rtw_power_mgnt:    {'0':'opt.off','1':'opt.minimal','2':'opt.maximal'},
+        rtw_ips_mode:      {'0':'opt.none','1':'opt.normal','2':'opt.level2'},
+        rtw_lps_level:     {'0':'opt.normal','1':'opt.clockgating','2':'opt.powergating'},
+        rtw_ampdu_enable:  {'0':'opt.off','1':'opt.on'},
+        rtw_en_napi:       {'0':'opt.off','1':'opt.on'},
+        rtw_en_gro:        {'0':'opt.off','1':'opt.on'},
+        rtw_switch_usb_mode: {'0':'opt.nochange','1':'opt.usb3','2':'opt.usb2'},
+        rtw_wmm_enable:    {'0':'opt.off','1':'opt.on'},
+        rtw_dyn_txbf:      {'0':'opt.off','1':'opt.on'},
+        rtw_tx_nss:        {'0':'opt.auto','1':'opt.1stream','2':'opt.2streams'},
+        rtw_rx_nss:        {'0':'opt.auto','1':'opt.1stream','2':'opt.2streams'},
+        rtw_antdiv_cfg:    {'0':'opt.off','1':'opt.on','2':'opt.auto_efuse'},
+        rtw_rx_stbc:       {'0':'opt.off','1':'opt.only24','2':'opt.only5','3':'opt.both_bands'},
+        rtw_btcoex_enable: {'0':'opt.off','1':'opt.on','2':'opt.auto_efuse'},
+        rtw_drv_log_level: {'0':'opt.none','1':'opt.error','2':'opt.warning','3':'opt.notice','4':'opt.info','5':'opt.debug'},
+        rtw_tx_pwr_by_rate: {'0':'opt.off','1':'opt.on','2':'opt.auto_efuse'},
+        rtw_tx_pwr_lmt_enable: {'0':'opt.off','1':'opt.on','2':'opt.auto_efuse'},
     };
     return opts[pname] || null;
 }
@@ -1404,7 +1744,7 @@ function advValueChanged(pname, value) {
 
 async function saveAdvanced() {
     if (Object.keys(advChanges).length === 0) {
-        showToast('Geen wijzigingen om op te slaan', false);
+        showToast(t('toast.nochanges'), false);
         return;
     }
     const moduleParams = {};
@@ -1418,11 +1758,7 @@ async function saveAdvanced() {
             body: JSON.stringify({module: moduleParams})
         });
         const d = await r.json();
-        if (d.reload_needed) {
-            showToast('Instellingen opgeslagen. Module herstart nodig.', true);
-        } else {
-            showToast('Instellingen opgeslagen.', true);
-        }
+        showToast(d.reload_needed ? t('toast.savedrestart') : t('toast.saved'), true);
         advChanges = {};
         await loadAdvanced();
         if (advSelectedCat && advSelectedParam) {
@@ -1430,7 +1766,7 @@ async function saveAdvanced() {
             renderAdvEditor(advSelectedCat, advSelectedParam);
         }
     } catch(e) {
-        showToast('Fout bij opslaan', false);
+        showToast(t('toast.saveerr'), false);
     }
 }
 
@@ -1439,24 +1775,24 @@ function resetAdvanced() {
     if (advSelectedCat) renderAdvProperties(advSelectedCat);
     if (advSelectedCat && advSelectedParam) renderAdvEditor(advSelectedCat, advSelectedParam);
     updatePendingBanner(false);
-    showToast('Lokale wijzigingen gewist', true);
+    showToast(t('toast.resetlocal'), true);
 }
 
 async function reloadModule() {
-    if (!confirm('Module herladen?\\n\\nDe WiFi-verbinding wordt tijdelijk verbroken. De adapter wordt opnieuw geïnitialiseerd met de opgeslagen instellingen.\\n\\nDoorgaan?')) return;
-    showToast('Module wordt herladen...', true);
+    if (!confirm(t('adv.reloadconfirm'))) return;
+    showToast(t('toast.reloading'), true);
     try {
         const r = await fetch('/api/advanced/reload', {method: 'POST'});
         const d = await r.json();
         if (d.success) {
-            showToast(d.message || 'Module succesvol herladen', true);
+            showToast(d.message || t('toast.reloaded'), true);
             advLoaded = false;
             setTimeout(() => { loadAdvanced(); refreshStatus(); }, 2000);
         } else {
-            showToast(d.error || 'Herladen mislukt', false);
+            showToast(d.error || t('toast.reloadfail'), false);
         }
     } catch(e) {
-        showToast('Fout bij herladen', false);
+        showToast(t('toast.reloaderr'), false);
     }
 }
 
@@ -1464,11 +1800,11 @@ function updatePendingBanner(show) {
     const el = document.getElementById('adv-pending-banner');
     if (show) {
         const n = Object.keys(advChanges).length;
-        let txt = '';
+        let txt;
         if (n > 0) {
-            txt = n + ' onopgeslagen wijziging' + (n > 1 ? 'en' : '') + '. Klik "Opslaan & Toepassen" om op te slaan, daarna "Module Herladen" om te activeren.';
+            txt = n + (n === 1 ? t('adv.pending_1') : t('adv.pending_n'));
         } else {
-            txt = 'Er zijn opgeslagen wijzigingen die een module herstart vereisen. Klik "Module Herladen" om te activeren.';
+            txt = t('adv.pending_saved');
         }
         el.textContent = '\u26A0 ' + txt;
         el.style.display = 'block';
@@ -1478,6 +1814,7 @@ function updatePendingBanner(show) {
 }
 
 // ── Initial load and auto-refresh ───────────────────────────────────
+applyTranslations();
 refreshStatus();
 refreshDriverInfo();
 setInterval(refreshStatus, 5000);
