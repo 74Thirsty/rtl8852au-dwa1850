@@ -81,10 +81,21 @@ AUTH_TOKEN = _load_or_create_token()
 @app.before_request
 def _enforce_auth_and_host():
     """Reject requests with an unexpected Host header (DNS-rebinding
-    defence) or without valid HTTP Basic credentials."""
+    defence) or without valid HTTP Basic credentials.
+
+    Exception: the Server-Sent Events stream cannot send a custom
+    Authorization header, so /api/stream also accepts the token as a
+    ?token=<...> query parameter. The token is the same per-host
+    secret as the Basic Auth password, just delivered differently.
+    """
     host = (request.host or "").split(":")[0].lower()
     if host not in ALLOWED_HOSTS:
         return Response("forbidden host\n", status=403, mimetype="text/plain")
+
+    if request.path == "/api/stream":
+        qtoken = request.args.get("token") or ""
+        if hmac.compare_digest(qtoken, AUTH_TOKEN):
+            return None
 
     auth = request.authorization
     supplied = (auth.password or "") if auth is not None else ""
@@ -198,12 +209,9 @@ def _record_sample(payload):
 
 # ── API Endpoints ─────────────────────────────────────────────────────
 
-@app.route("/api/status")
-def api_status():
-    iface = get_wlan_interface()
-    if not iface:
-        return jsonify({"error": "No interface found", "driver_loaded": False})
-
+def _collect_status(iface):
+    """Build the status dict for a known interface — shared by
+    /api/status and the SSE stream so both views see the same shape."""
     dev_path = os.path.realpath(f"/sys/class/net/{iface}/device")
     usb_parent = os.path.dirname(dev_path)
 
@@ -288,8 +296,50 @@ def api_status():
             "rx_dropped": int(rx_dropped),
         }
     }
+    return payload
+
+
+@app.route("/api/status")
+def api_status():
+    iface = get_wlan_interface()
+    if not iface:
+        return jsonify({"error": "No interface found", "driver_loaded": False})
+    payload = _collect_status(iface)
     _record_sample(payload)
     return jsonify(payload)
+
+
+@app.route("/api/stream")
+def api_stream():
+    """Server-Sent Events stream — pushes a fresh status payload every
+    ~2 seconds. Replaces the client's setInterval(refreshStatus, 5000)
+    polling loop. EventSource cannot send a custom Authorization
+    header, so this endpoint accepts the token via ?token=<...>
+    (see _enforce_auth_and_host)."""
+    def event_stream():
+        last_payload = None
+        while True:
+            iface = get_wlan_interface()
+            if iface:
+                payload = _collect_status(iface)
+                _record_sample(payload)
+            else:
+                payload = {"error": "No interface found", "driver_loaded": False}
+            serialised = json.dumps(payload)
+            if serialised != last_payload:
+                yield f"event: status\ndata: {serialised}\n\n"
+                last_payload = serialised
+            else:
+                # Keep-alive comment so proxies / browsers don't drop the connection.
+                yield ": keepalive\n\n"
+            time.sleep(2)
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    }
+    return Response(event_stream(), mimetype="text/event-stream", headers=headers)
 
 
 @app.route("/api/history")
@@ -746,6 +796,7 @@ DASHBOARD_HTML = """
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="rtw-token" content="__AUTH_TOKEN__">
 <title>RTL8852AU WiFi Dashboard</title>
 <style>
 /* ── Theme tokens ────────────────────────────────────────────────── */
@@ -1554,68 +1605,8 @@ function switchTab(name) {
     if (name === 'advanced' && !advLoaded) loadAdvanced();
 }
 
-let prevStats = null;
-
-async function refreshStatus() {
-    try {
-        const r = await fetch('/api/status');
-        const d = await r.json();
-        const badge = document.getElementById('status-badge');
-
-        if (!d.driver_loaded) {
-            badge.textContent = t('status.driver_off');
-            badge.className = 'status-badge badge-err';
-            return;
-        }
-
-        badge.textContent = d.operstate === 'up' || d.operstate === 'dormant'
-            ? t('status.connected') : t('status.disconnected');
-        badge.className = 'status-badge ' + (d.connection.ssid ? 'badge-ok' : 'badge-err');
-
-        document.getElementById('adapter-info').innerHTML = `
-            <div class="info-row"><span class="info-label">${t('label.interface')}</span><span class="info-value">${d.interface}</span></div>
-            <div class="info-row"><span class="info-label">${t('label.mac')}</span><span class="info-value">${d.mac_address}</span></div>
-            <div class="info-row"><span class="info-label">${t('label.ip')}</span><span class="info-value">${d.ip_address || t('status.none')}</span></div>
-            <div class="info-row"><span class="info-label">${t('label.status')}</span><span class="info-value">${d.operstate}</span></div>
-            <div class="info-row"><span class="info-label">${t('label.mtu')}</span><span class="info-value">${d.mtu}</span></div>
-            <div class="info-row"><span class="info-label">${t('label.usbspeed')}</span><span class="info-value">${d.usb_speed_mbps} Mbps</span></div>
-            <div class="info-row"><span class="info-label">${t('label.usbdev')}</span><span class="info-value">${d.usb_vendor}:${d.usb_product} (${d.usb_product_name})</span></div>
-        `;
-
-        const conn = d.connection;
-        let connHtml = '';
-        if (conn.ssid) {
-            const pct = signalPercent(conn.signal_dbm);
-            const col = signalColor(conn.signal_dbm);
-            connHtml = `
-                <div class="info-row"><span class="info-label">${t('th.ssid')}</span><span class="info-value">${conn.ssid}</span></div>
-                <div class="info-row"><span class="info-label">${t('label.signal')}</span><span class="info-value">${conn.signal_dbm} dBm</span></div>
-                <div class="signal-bar"><div class="signal-fill" style="width:${pct}%;background:${col};"></div></div>
-                <div class="info-row"><span class="info-label">${t('label.freq')}</span><span class="info-value">${conn.frequency_mhz} MHz</span></div>
-                <div class="info-row"><span class="info-label">${t('label.txbitrate')}</span><span class="info-value">${conn.tx_bitrate || 'N/A'}</span></div>
-            `;
-        } else {
-            connHtml = `<div style="color:#64748b;padding:20px;text-align:center;">${t('conn.notconnected')}</div>`;
-        }
-        document.getElementById('connection-info').innerHTML = connHtml;
-
-        const s = d.statistics;
-        document.getElementById('stats-info').innerHTML = `
-            <div class="stat-box"><div class="stat-value">${formatBytes(s.tx_bytes)}</div><div class="stat-label">${t('stat.tx_data')}</div></div>
-            <div class="stat-box"><div class="stat-value">${formatBytes(s.rx_bytes)}</div><div class="stat-label">${t('stat.rx_data')}</div></div>
-            <div class="stat-box"><div class="stat-value">${s.tx_packets.toLocaleString()}</div><div class="stat-label">${t('stat.tx_pkts')}</div></div>
-            <div class="stat-box"><div class="stat-value">${s.rx_packets.toLocaleString()}</div><div class="stat-label">${t('stat.rx_pkts')}</div></div>
-            <div class="stat-box"><div class="stat-value">${s.tx_errors}</div><div class="stat-label">${t('stat.tx_err')}</div></div>
-            <div class="stat-box"><div class="stat-value">${s.rx_errors}</div><div class="stat-label">${t('stat.rx_err')}</div></div>
-            <div class="stat-box"><div class="stat-value">${s.tx_dropped}</div><div class="stat-label">${t('stat.tx_drop')}</div></div>
-            <div class="stat-box"><div class="stat-value">${s.rx_dropped}</div><div class="stat-label">${t('stat.rx_drop')}</div></div>
-        `;
-
-        prevStats = s;
-    } catch(e) {
-        console.error('Status refresh failed:', e);
-    }
-}
+// refreshStatus() is defined later as a wrapper around applyStatusPayload —
+// the legacy polling implementation has been replaced by the SSE stream.
 
 async function refreshDriverInfo() {
     try {
@@ -2137,13 +2128,90 @@ function updatePendingBanner(show) {
     }
 }
 
+// ── Live updates via Server-Sent Events ─────────────────────────────
+const AUTH_TOKEN = document.querySelector('meta[name="rtw-token"]').content;
+let STREAM = null;
+let LAST_STATUS = null;
+
+function applyStatusPayload(d) {
+    LAST_STATUS = d;
+    const badge = document.getElementById('status-badge');
+    if (!d.driver_loaded) {
+        badge.textContent = t('status.driver_off');
+        badge.className = 'status-badge badge-err';
+        return;
+    }
+    badge.textContent = d.operstate === 'up' || d.operstate === 'dormant'
+        ? t('status.connected') : t('status.disconnected');
+    badge.className = 'status-badge ' + (d.connection.ssid ? 'badge-ok' : 'badge-err');
+
+    document.getElementById('adapter-info').innerHTML = `
+        <div class="info-row"><span class="info-label">${t('label.interface')}</span><span class="info-value">${d.interface}</span></div>
+        <div class="info-row"><span class="info-label">${t('label.mac')}</span><span class="info-value">${d.mac_address}</span></div>
+        <div class="info-row"><span class="info-label">${t('label.ip')}</span><span class="info-value">${d.ip_address || t('status.none')}</span></div>
+        <div class="info-row"><span class="info-label">${t('label.status')}</span><span class="info-value">${d.operstate}</span></div>
+        <div class="info-row"><span class="info-label">${t('label.mtu')}</span><span class="info-value">${d.mtu}</span></div>
+        <div class="info-row"><span class="info-label">${t('label.usbspeed')}</span><span class="info-value">${d.usb_speed_mbps} Mbps</span></div>
+        <div class="info-row"><span class="info-label">${t('label.usbdev')}</span><span class="info-value">${d.usb_vendor}:${d.usb_product} (${d.usb_product_name})</span></div>
+    `;
+
+    const conn = d.connection;
+    let connHtml = '';
+    if (conn.ssid) {
+        const pct = signalPercent(conn.signal_dbm);
+        const col = signalColor(conn.signal_dbm);
+        connHtml = `
+            <div class="info-row"><span class="info-label">${t('th.ssid')}</span><span class="info-value">${conn.ssid}</span></div>
+            <div class="info-row"><span class="info-label">${t('label.signal')}</span><span class="info-value">${conn.signal_dbm} dBm</span></div>
+            <div class="signal-bar"><div class="signal-fill" style="width:${pct}%;background:${col};"></div></div>
+            <div class="info-row"><span class="info-label">${t('label.freq')}</span><span class="info-value">${conn.frequency_mhz} MHz</span></div>
+            <div class="info-row"><span class="info-label">${t('label.txbitrate')}</span><span class="info-value">${conn.tx_bitrate || 'N/A'}</span></div>
+        `;
+    } else {
+        connHtml = `<div style="color:var(--text-dim);padding:20px;text-align:center;">${t('conn.notconnected')}</div>`;
+    }
+    document.getElementById('connection-info').innerHTML = connHtml;
+
+    const s = d.statistics;
+    document.getElementById('stats-info').innerHTML = `
+        <div class="stat-box"><div class="stat-value">${formatBytes(s.tx_bytes)}</div><div class="stat-label">${t('stat.tx_data')}</div></div>
+        <div class="stat-box"><div class="stat-value">${formatBytes(s.rx_bytes)}</div><div class="stat-label">${t('stat.rx_data')}</div></div>
+        <div class="stat-box"><div class="stat-value">${s.tx_packets.toLocaleString()}</div><div class="stat-label">${t('stat.tx_pkts')}</div></div>
+        <div class="stat-box"><div class="stat-value">${s.rx_packets.toLocaleString()}</div><div class="stat-label">${t('stat.rx_pkts')}</div></div>
+        <div class="stat-box"><div class="stat-value">${s.tx_errors}</div><div class="stat-label">${t('stat.tx_err')}</div></div>
+        <div class="stat-box"><div class="stat-value">${s.rx_errors}</div><div class="stat-label">${t('stat.rx_err')}</div></div>
+        <div class="stat-box"><div class="stat-value">${s.tx_dropped}</div><div class="stat-label">${t('stat.tx_drop')}</div></div>
+        <div class="stat-box"><div class="stat-value">${s.rx_dropped}</div><div class="stat-label">${t('stat.rx_drop')}</div></div>
+    `;
+}
+
+function startStream() {
+    if (STREAM) STREAM.close();
+    STREAM = new EventSource('/api/stream?token=' + encodeURIComponent(AUTH_TOKEN));
+    STREAM.addEventListener('status', e => {
+        try { applyStatusPayload(JSON.parse(e.data)); }
+        catch (err) { console.warn('SSE parse failed', err); }
+    });
+    STREAM.onerror = () => { /* EventSource auto-reconnects */ };
+}
+
+// Override refreshStatus so the in-place buttons (e.g. after connect/
+// disconnect) still produce an immediate refresh — the stream will
+// follow up within ~2 s.
+async function refreshStatus() {
+    try {
+        const r = await fetch('/api/status');
+        applyStatusPayload(await r.json());
+    } catch (e) { /* stream will catch up */ }
+}
+
 // ── Initial load and auto-refresh ───────────────────────────────────
 document.documentElement.setAttribute('data-theme', THEME);
 applyTranslations();
-refreshStatus();
+startStream();
 refreshDriverInfo();
 refreshTrends();
-setInterval(() => { refreshStatus(); refreshTrends(); }, 5000);
+setInterval(refreshTrends, 5000);
 </script>
 </body>
 </html>
@@ -2152,7 +2220,11 @@ setInterval(() => { refreshStatus(); refreshTrends(); }, 5000);
 
 @app.route("/")
 def index():
-    return render_template_string(DASHBOARD_HTML)
+    # We use str.replace rather than render_template_string because the
+    # dashboard's embedded JS contains many ${...} template literals and
+    # {...} object literals that Jinja2 would try to interpret.
+    html = DASHBOARD_HTML.replace("__AUTH_TOKEN__", AUTH_TOKEN)
+    return Response(html, mimetype="text/html; charset=utf-8")
 
 
 if __name__ == "__main__":
