@@ -74,16 +74,38 @@ the adapter:
 |--------------------|------------------------------------------------------------------------------------------------|
 | **Adapter Info**   | Interface name, MAC address, IP address, UP/DOWN state, MTU, USB speed and the USB VID:PID    |
 | **Connection**     | When associated: SSID, signal strength (dBm + colour bar), frequency, current TX bitrate      |
-| **Statistics**     | TX/RX bytes, TX/RX packets, errors and dropped — eight tiles updated every 5 seconds         |
+| **Statistics**     | TX/RX bytes, TX/RX packets, errors and dropped — eight tiles updated every ~2 s via SSE       |
 | **Driver Info**    | Module name, driver name, kernel version, `srcversion` hash, vendor version                   |
+| **Trends**         | Four sparklines covering the last 60 minutes: signal (dBm), TX bitrate (Mbps), RX throughput (B/s), error rate (Δ per sample). Live value of each metric is shown to the right of the line |
 
 A status badge at the top right shows **Connected** (green) or **Not
 connected** (red) at a glance, plus the loaded-driver state.
 
+The dashboard pushes status updates over a long-lived
+`/api/stream` Server-Sent Events connection. There is no polling
+interval to tune — new data arrives within ~2 s of any change.
+
 ### Networks
 
-Two cards. The first scans for nearby access points, the second lets
-you connect to a specific SSID by hand.
+Three cards. The first visualises the spectrum around you, the
+second is the classic AP table, the third is manual-connect.
+
+**Channel usage** (top card)
+
+Two canvases — one for 2.4 GHz (channels 1–14), one for 5 GHz
+(channels 36–165). Each channel is a bar:
+
+| Visual cue       | Meaning                                                                |
+|------------------|------------------------------------------------------------------------|
+| Bar **height**   | Strongest RSSI seen on that channel (-90 to -20 dBm)                   |
+| Bar **colour**   | Green for 1 AP, amber for 2, red for 3 or more (likely congestion)     |
+| Number above bar | Count of APs on that channel                                           |
+| Y-axis labels    | -30 / -50 / -70 / -90 dBm grid lines                                   |
+
+The card auto-refreshes every 30 s while the Networks tab is active,
+and the scan is cached for 30 s on the server so switching tabs back
+and forth doesn't re-trigger an `iw scan` cycle. A one-line summary
+under the title reads `N APs across M channels`.
 
 **Available networks**
 
@@ -185,6 +207,29 @@ UI between English and Dutch. The choice is stored in
 `localStorage`, so a refresh keeps your preference. On a fresh
 browser the dashboard auto-detects the user's locale: a Dutch
 browser opens in Dutch, anything else opens in English.
+
+## Theme
+
+Two more buttons in the header — **●** (dark) and **○** (light) —
+flip the entire UI between a dark slate theme and a light slate
+theme. Like the language choice, it's persisted in `localStorage`.
+The sparklines and spectrum canvases pick up the theme's accent
+colour automatically.
+
+## Keyboard shortcuts
+
+| Key         | Action                                          |
+|-------------|-------------------------------------------------|
+| `1`–`5`     | Jump to the corresponding tab                   |
+| `/`         | Open Networks and trigger a scan                |
+| `r`         | Refresh status / driver info / trends           |
+| `t`         | Toggle theme (dark ↔ light)                     |
+| `l`         | Toggle language (EN ↔ NL)                       |
+| `?`         | Open the shortcuts help overlay                 |
+| `Esc`       | Close the overlay                               |
+
+Shortcuts are suppressed while an input, select or textarea has
+focus, so they never collide with typing an SSID or passphrase.
 
 ---
 

@@ -76,16 +76,39 @@ de adapter samenvatten:
 |--------------------|-----------------------------------------------------------------------------------------------------|
 | **Adapter Info**   | Interface-naam, MAC-adres, IP-adres, UP/DOWN-status, MTU, USB-snelheid en het USB VID:PID            |
 | **Verbinding**     | Bij associatie: SSID, signaalsterkte (dBm + kleurbalk), frequentie, huidige TX-bitrate              |
-| **Statistieken**   | TX/RX bytes, TX/RX pakketten, fouten en gedropt — acht tegels, elke 5 seconden ververst             |
+| **Statistieken**   | TX/RX bytes, TX/RX pakketten, fouten en gedropt — acht tegels, elke ~2 s ververst via SSE           |
 | **Driver Info**    | Modulenaam, drivernaam, kernel-versie, `srcversion`-hash, vendor-versie                              |
+| **Trends**         | Vier sparklines over de laatste 60 minuten: signaal (dBm), TX-bitrate (Mbps), RX-doorvoer (B/s), fout-rate (Δ per sample). De huidige waarde staat rechts naast elke lijn |
 
 Een status-badge rechtsboven toont in één oogopslag **Verbonden**
 (groen) of **Niet verbonden** (rood), plus de driver-laad-status.
 
+Het dashboard pusht status-updates via een lange `/api/stream`
+Server-Sent-Events-verbinding. Er is geen poll-interval om af te
+stellen — nieuwe data komt binnen ~2 s na elke wijziging binnen.
+
 ### Netwerken
 
-Twee kaarten. De eerste scant op nabijgelegen access points, de
-tweede laat je handmatig verbinden met een specifieke SSID.
+Drie kaarten. De eerste visualiseert het spectrum, de tweede is de
+klassieke AP-tabel, de derde is handmatig verbinden.
+
+**Kanaal-bezetting** (bovenste kaart)
+
+Twee canvassen — één voor 2,4 GHz (kanalen 1–14), één voor 5 GHz
+(kanalen 36–165). Elke balk is één kanaal:
+
+| Visueel signaal     | Betekenis                                                              |
+|---------------------|------------------------------------------------------------------------|
+| Balk-**hoogte**     | Sterkste RSSI op dat kanaal (-90 tot -20 dBm)                          |
+| Balk-**kleur**      | Groen bij 1 AP, oranje bij 2, rood bij 3+ (vermoedelijk druk)          |
+| Getal boven balk    | Aantal APs op dat kanaal                                               |
+| Y-as-labels         | -30 / -50 / -70 / -90 dBm grid-lijnen                                  |
+
+De kaart ververst zichzelf elke 30 s zolang de Netwerken-tab actief
+is, en de scan wordt 30 s server-side gecached zodat heen-en-weer
+schakelen tussen tabs geen nieuwe `iw scan`-cyclus triggert. Een
+één-regel-samenvatting onder de titel toont `N APs verdeeld over M
+kanalen`.
 
 **Beschikbare netwerken**
 
@@ -190,6 +213,30 @@ tussen Engels en Nederlands. De keuze wordt bewaard in
 `localStorage`, dus na een refresh blijft je voorkeur. Bij een
 verse browser kiest het dashboard automatisch: een Nederlandse
 browser opent in het Nederlands, alle andere in het Engels.
+
+## Thema
+
+Twee andere knoppen in de header — **●** (donker) en **○** (licht)
+— wisselen de hele UI tussen een donker- en een licht-thema. Net
+als de taalkeuze wordt het bewaard in `localStorage`. De sparklines
+en spectrum-canvassen pakken de accentkleur van het thema
+automatisch op.
+
+## Sneltoetsen
+
+| Toets      | Actie                                              |
+|------------|----------------------------------------------------|
+| `1`–`5`    | Spring naar de bijbehorende tab                    |
+| `/`        | Open Netwerken en start een scan                   |
+| `r`        | Ververs status / driver-info / trends              |
+| `t`        | Wissel thema (donker ↔ licht)                      |
+| `l`        | Wissel taal (EN ↔ NL)                              |
+| `?`        | Open de sneltoetsen-help                           |
+| `Esc`      | Sluit de overlay                                   |
+
+Sneltoetsen worden onderdrukt zolang een input, select of textarea
+focus heeft, zodat ze nooit botsen met het typen van een SSID of
+wachtwoord.
 
 ---
 
