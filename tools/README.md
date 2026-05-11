@@ -1,5 +1,7 @@
 # tools/
 
+**English** | [Nederlands](README.nl.md)
+
 Auxiliary scripts used by the maintainer for CTF challenges, hardware
 debugging, and security research on **own equipment**. They are **not**
 part of the driver itself and are not installed by `make install` or

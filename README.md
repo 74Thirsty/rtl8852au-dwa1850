@@ -1,5 +1,7 @@
 # rtl8852au-build
 
+**English** | [Nederlands](README.nl.md)
+
 [![CI](https://github.com/WimLee115/rtl8852au-build/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/WimLee115/rtl8852au-build/actions/workflows/ci.yml)
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-blue.svg)](LICENSE)
 [![Kernel](https://img.shields.io/badge/kernel-6.1%20%E2%80%93%206.19%2B-informational.svg)](#compatibility)

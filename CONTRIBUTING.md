@@ -1,5 +1,7 @@
 # Contributing
 
+**English** | [Nederlands](CONTRIBUTING.nl.md)
+
 This fork is maintained by a single developer in his spare time. Contributions
 are welcome — please keep them focused and well-described.
 

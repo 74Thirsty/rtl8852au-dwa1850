@@ -1,5 +1,7 @@
 # Security policy
 
+**English** | [Nederlands](SECURITY.nl.md)
+
 ## Reporting a vulnerability
 
 If you find a security issue in this driver, the dashboard, or the helper
