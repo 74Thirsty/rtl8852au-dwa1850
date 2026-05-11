@@ -7,6 +7,14 @@ changes in this file.
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [1.15.0.1+8] — 2026-05-11
+
+First tagged release of this fork. Carries the twelve baseline kernel
+6.17+ compatibility patches plus eight post-baseline fixes for runtime
+bugs, hardware additions, and the security hardening pass below.
+
 ### Security
 - **Branch protection on `main`.** Required status checks (all four CI
   jobs), force-push and deletion blocked. Maintainer can still merge
