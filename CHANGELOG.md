@@ -7,7 +7,23 @@ changes in this file.
 
 ## [Unreleased]
 
-_No changes yet._
+### Verified
+
+- **Patch 0007 (`netdev_close` mutex + skip-on-remove) is now
+  hardware-validated** on a TP-Link Archer TX20U Plus (`2357:013f`)
+  running on Linux 6.19.14+kali. Concretely:
+    - 10× `ip link up/down` cycle @ 200 ms spacing (the exact pattern
+      that previously panicked the kernel without the patch): no
+      panic, full 5.3 s, system stable.
+    - 30× `ip link up/down` cycle @ 50 ms spacing (4× faster than the
+      original trigger): no panic, full 6.9 s, module remained loaded.
+    - `rmmod 8852au` while the interface was UP: returned in **198 ms**
+      with exit 0; previously the disassoc cmd path would block up to
+      2 s and panic under load.
+    - `insmod ./8852au.ko` reload: 478 ms, `wlan1` re-created with a
+      fresh MAC, NetworkManager auto-reconnected to the WPA2 AP at
+      780 Mbit/s, -43 dBm. No kernel taint beyond the expected
+      out-of-tree / unsigned-module messages.
 
 ## [1.15.0.1+8] — 2026-05-11
 
