@@ -913,7 +913,41 @@ async function applySettings() {
     }
 }
 
-async function runTests() {
+// Tracks intervals that should pause while a long-lived blocking
+// request (the test runner) is in flight. The dev-server's connection
+// pool plus the always-open SSE stream make Firefox drop the test POST
+// after a few seconds of inactivity if we keep polling /api/history in
+// parallel. Pausing everything for the duration fixes it.
+let _LONG_RUN_PAUSED = false;
+function withLongRunPause(fn) {
+    return async function(...args) {
+        const hadStream = STREAM != null;
+        _LONG_RUN_PAUSED = true;
+        if (hadStream) { try { STREAM.close(); STREAM = null; } catch (_) {} }
+        try {
+            return await fn.apply(this, args);
+        } finally {
+            _LONG_RUN_PAUSED = false;
+            if (hadStream) startStream();
+        }
+    };
+}
+
+async function _fetchWithRetry(url, opts, attempts) {
+    let lastErr;
+    for (let i = 0; i < (attempts || 2); i++) {
+        try {
+            const r = await fetch(url, opts);
+            return r;
+        } catch (e) {
+            lastErr = e;
+            if (i < attempts - 1) await new Promise(res => setTimeout(res, 400));
+        }
+    }
+    throw lastErr;
+}
+
+const runTests = withLongRunPause(async function _runTests() {
     const btn = document.getElementById('btn-run-tests');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> ' + t('tests.busy');
@@ -921,10 +955,11 @@ async function runTests() {
     document.getElementById('test-summary').textContent = '';
 
     try {
-        const r = await fetch('/api/tests/run', {
+        const r = await _fetchWithRetry('/api/tests/run', {
             method: 'POST',
             headers: {'Accept': 'application/json'},
-        });
+            keepalive: false,
+        }, 2);
         if (!r.ok) {
             throw new Error('HTTP ' + r.status + ' ' + r.statusText);
         }
@@ -968,7 +1003,7 @@ async function runTests() {
 
     btn.disabled = false;
     btn.textContent = t('btn.runtests');
-}
+});
 
 // ── Advanced Tab Logic ───────────────────────────────────────────────
 
@@ -1429,14 +1464,16 @@ applyTranslations();
 startStream();
 refreshDriverInfo();
 refreshTrends();
-setInterval(refreshTrends, 5000);
+setInterval(() => { if (!_LONG_RUN_PAUSED) refreshTrends(); }, 5000);
 setInterval(() => {
+    if (_LONG_RUN_PAUSED) return;
     // Spectrum re-fetch only when the Networks tab is the active one.
     if (document.getElementById('tab-networks').classList.contains('active')) {
         refreshSpectrum();
     }
 }, 30000);
 setInterval(() => {
+    if (_LONG_RUN_PAUSED) return;
     // While the Monitor tab is open, keep status + frame buffer fresh.
     const monTab = document.getElementById('tab-monitor');
     if (monTab && monTab.classList.contains('active')) {
