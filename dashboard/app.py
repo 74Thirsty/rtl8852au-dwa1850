@@ -221,7 +221,7 @@ def api_connect():
         f.write(f'ctrl_interface=/var/run/wpa_supplicant\nupdate_config=1\n\n{conf}')
 
     # Kill existing wpa_supplicant for this interface
-    run(f"killall -9 wpa_supplicant 2>/dev/null; sleep 1")
+    run("killall -9 wpa_supplicant 2>/dev/null; sleep 1")
     run(f"ip link set {iface} up")
 
     # Start wpa_supplicant
@@ -246,7 +246,7 @@ def api_disconnect():
         return jsonify({"error": "No interface found"}), 404
 
     run(f"iw dev {iface} disconnect")
-    run(f"killall wpa_supplicant 2>/dev/null")
+    run("killall wpa_supplicant 2>/dev/null")
     run(f"dhclient -r {iface} 2>/dev/null")
     return jsonify({"success": True})
 

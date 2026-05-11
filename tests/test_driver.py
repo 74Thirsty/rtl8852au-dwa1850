@@ -276,7 +276,7 @@ class TestWiFiScan(unittest.TestCase):
 
     def test_03_supported_bands(self):
         """Verify driver reports supported frequency bands."""
-        rc, out, _ = run(f"iw phy")
+        rc, out, _ = run("iw phy")
         self.assertEqual(rc, 0)
         # RTL8852AU should support 2.4GHz and 5GHz
         has_2g = "2412 MHz" in out or "Band 1" in out
@@ -314,7 +314,7 @@ class TestCfg80211(unittest.TestCase):
 
     def test_03_interface_modes(self):
         """Verify supported interface modes include managed."""
-        rc, out, _ = run(f"iw phy")
+        rc, out, _ = run("iw phy")
         self.assertEqual(rc, 0)
         self.assertIn("managed", out.lower(),
                        "Managed mode not supported")
@@ -385,7 +385,7 @@ class TestDmesgClean(unittest.TestCase):
                                              'general protection fault']):
                     errors.append(line.strip())
         self.assertEqual(len(errors), 0,
-                         f"Kernel errors found:\n" + "\n".join(errors))
+                         "Kernel errors found:\n" + "\n".join(errors))
 
     def test_02_no_usb_errors(self):
         """Check for USB-related errors on our device."""
@@ -404,7 +404,7 @@ class TestDmesgClean(unittest.TestCase):
                     usb_errors.append(line.strip())
         # Warn but don't fail for minor USB issues
         if usb_errors:
-            print(f"\nWARNING: USB issues detected:\n" +
+            print("\nWARNING: USB issues detected:\n" +
                   "\n".join(usb_errors[:5]))
 
 
@@ -480,7 +480,7 @@ class TestStability(unittest.TestCase):
         ~1.5s per half-cycle and verify the interface is fully down/up
         before issuing the next command.
         """
-        for i in range(10):
+        for _ in range(10):
             run(f"ip link set {self.iface} down", timeout=10)
             time.sleep(1.5)
             run(f"ip link set {self.iface} up", timeout=10)
@@ -498,7 +498,7 @@ class TestStability(unittest.TestCase):
         """
         run(f"ip link set {self.iface} up")
         time.sleep(2)
-        for i in range(5):
+        for _ in range(5):
             run(f"iw dev {self.iface} scan trigger")
             time.sleep(2)
         rc, out, _ = run(f"iw dev {self.iface} scan dump", timeout=15)
