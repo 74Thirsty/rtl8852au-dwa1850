@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en" id="html-root">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="rtw-token" content="{{ auth_token }}">
+<title>RTL8852AU WiFi Dashboard</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="header">
+    <div class="header-title">
+        <h1>RTL8852AU WiFi Dashboard</h1>
+        <a class="header-link"
+           href="https://github.com/WimLee115/rtl8852au-build"
+           target="_blank" rel="noopener noreferrer">github.com/WimLee115/rtl8852au-build</a>
+    </div>
+    <div class="header-controls">
+        <div class="lang-switch">
+            <button class="lang-btn" data-theme-btn="dark" onclick="setTheme('dark')" title="Dark mode">●</button>
+            <button class="lang-btn" data-theme-btn="light" onclick="setTheme('light')" title="Light mode">○</button>
+        </div>
+        <div class="lang-switch">
+            <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+            <button class="lang-btn" data-lang="nl" onclick="setLanguage('nl')">NL</button>
+        </div>
+        <span id="status-badge" class="status-badge badge-ok" data-i18n="status.loading">Loading...</span>
+    </div>
+</div>
+
+<div class="kbd-overlay" id="kbd-overlay" onclick="if(event.target===this)toggleKbdHelp()">
+    <div class="kbd-panel">
+        <h3 data-i18n="kbd.title">Keyboard shortcuts</h3>
+        <div class="kbd-row"><span data-i18n="kbd.tab1">Overview tab</span><span><kbd class="kbd">1</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.tab2">Networks tab</span><span><kbd class="kbd">2</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.tab3">Settings tab</span><span><kbd class="kbd">3</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.tab4">Tests tab</span><span><kbd class="kbd">4</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.tab5">Advanced tab</span><span><kbd class="kbd">5</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.scan">Scan networks</span><span><kbd class="kbd">/</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.refresh">Refresh status</span><span><kbd class="kbd">r</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.theme">Toggle theme</span><span><kbd class="kbd">t</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.lang">Toggle language</span><span><kbd class="kbd">l</kbd></span></div>
+        <div class="kbd-row"><span data-i18n="kbd.help">Show this help</span><span><kbd class="kbd">?</kbd></span></div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="tab-bar">
+        <div class="tab active" onclick="switchTab('overview')" data-tab="overview" data-i18n="tab.overview">Overview</div>
+        <div class="tab" onclick="switchTab('networks')" data-tab="networks" data-i18n="tab.networks">Networks</div>
+        <div class="tab" onclick="switchTab('monitor')" data-tab="monitor" data-i18n="tab.monitor">Monitor</div>
+        <div class="tab" onclick="switchTab('settings')" data-tab="settings" data-i18n="tab.settings">Settings</div>
+        <div class="tab" onclick="switchTab('tests')" data-tab="tests" data-i18n="tab.tests">Tests</div>
+        <div class="tab" onclick="switchTab('advanced')" data-tab="advanced" data-i18n="tab.advanced">Advanced</div>
+    </div>
+
+    <!-- Overview Tab -->
+    <div id="tab-overview" class="tab-content active">
+        <div class="grid">
+            <div class="card">
+                <h2 data-i18n="card.adapter">Adapter Info</h2>
+                <div id="adapter-info" data-i18n="status.loading">Loading...</div>
+            </div>
+            <div class="card">
+                <h2 data-i18n="card.connection">Connection</h2>
+                <div id="connection-info" data-i18n="status.loading">Loading...</div>
+            </div>
+            <div class="card">
+                <h2 data-i18n="card.stats">Statistics</h2>
+                <div id="stats-info" class="stat-grid"></div>
+            </div>
+            <div class="card">
+                <h2 data-i18n="card.driver">Driver Info</h2>
+                <div id="driver-info" data-i18n="status.loading">Loading...</div>
+            </div>
+            <div class="card" style="grid-column: 1 / -1;">
+                <h2 data-i18n="card.trends">Trends (last 60 min)</h2>
+                <div id="trends-info">
+                    <div class="trend-row"><span class="trend-label" data-i18n="trend.signal">Signal</span><canvas class="trend-canvas" id="trend-signal"></canvas><span class="trend-value" id="trend-signal-val">–</span></div>
+                    <div class="trend-row"><span class="trend-label" data-i18n="trend.bitrate">TX bitrate</span><canvas class="trend-canvas" id="trend-bitrate"></canvas><span class="trend-value" id="trend-bitrate-val">–</span></div>
+                    <div class="trend-row"><span class="trend-label" data-i18n="trend.throughput">RX throughput</span><canvas class="trend-canvas" id="trend-throughput"></canvas><span class="trend-value" id="trend-throughput-val">–</span></div>
+                    <div class="trend-row"><span class="trend-label" data-i18n="trend.errors">Errors (Δ)</span><canvas class="trend-canvas" id="trend-errors"></canvas><span class="trend-value" id="trend-errors-val">–</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Networks Tab -->
+    <div id="tab-networks" class="tab-content">
+        <div class="card">
+            <h2 data-i18n="card.spectrum">Channel usage</h2>
+            <div id="spectrum-summary" style="color: var(--text-dim); font-size: 0.85rem; margin-bottom: 10px;" data-i18n="spectrum.click">Click Scan to load — auto-refresh every 30 s.</div>
+            <div class="spectrum-band">
+                <div class="spectrum-band-label"><strong>2.4 GHz</strong> <span data-i18n="spectrum.ch24">(channels 1–14)</span></div>
+                <canvas id="spectrum-24" class="spectrum-canvas"></canvas>
+            </div>
+            <div class="spectrum-band">
+                <div class="spectrum-band-label"><strong>5 GHz</strong> <span data-i18n="spectrum.ch5">(channels 36–165)</span></div>
+                <canvas id="spectrum-5" class="spectrum-canvas"></canvas>
+            </div>
+        </div>
+        <div class="card" style="margin-top: 20px;">
+            <h2><span data-i18n="card.scan">Available networks</span>
+                <button class="btn btn-primary btn-sm" onclick="doScan()" style="float:right;" data-i18n="btn.scan">
+                    Scan
+                </button>
+            </h2>
+            <div id="scan-status" style="margin: 10px 0; color: #64748b;"></div>
+            <table>
+                <thead>
+                    <tr>
+                        <th data-i18n="th.ssid">SSID</th>
+                        <th data-i18n="th.bssid">BSSID</th>
+                        <th data-i18n="th.signal">Signal</th>
+                        <th data-i18n="th.freq">Freq</th>
+                        <th data-i18n="th.security">Security</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="network-list"><tr><td colspan="6" data-i18n="scan.click">Click Scan...</td></tr></tbody>
+            </table>
+        </div>
+        <div class="card" style="margin-top: 20px;">
+            <h2 data-i18n="card.connect">Connect manually</h2>
+            <div class="form-group">
+                <label data-i18n="th.ssid">SSID</label>
+                <input type="text" id="connect-ssid" data-i18n-placeholder="ph.network" placeholder="Network name">
+            </div>
+            <div class="form-group">
+                <label data-i18n="label.password">Password</label>
+                <input type="password" id="connect-pass" data-i18n-placeholder="ph.password" placeholder="Password (leave blank for open)">
+            </div>
+            <div class="actions">
+                <button class="btn btn-success" onclick="doConnect()" data-i18n="btn.connect">Connect</button>
+                <button class="btn btn-danger" onclick="doDisconnect()" data-i18n="btn.disconnect">Disconnect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monitor Tab -->
+    <div id="tab-monitor" class="tab-content">
+        <div class="card">
+            <h2 data-i18n="card.monitor">Monitor mode</h2>
+            <div id="monitor-warning" style="background: var(--warn-bg); color: var(--warn-fg);
+                border: 1px solid var(--warn-border); border-radius: 8px; padding: 12px;
+                margin-bottom: 14px; font-size: 0.85rem;" data-i18n="monitor.warning">
+                Monitor mode requires the interface to be unmanaged by NetworkManager / wpa_supplicant.
+                Run: sudo nmcli device set wlanX managed no  &amp;&amp;  sudo systemctl stop wpa_supplicant
+            </div>
+            <div class="info-row">
+                <span class="info-label" data-i18n="monitor.iface">Interface</span>
+                <span class="info-value" id="mon-iface">–</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label" data-i18n="monitor.mode">Mode</span>
+                <span class="info-value" id="mon-mode">–</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label" data-i18n="monitor.channel">Channel</span>
+                <span class="info-value" id="mon-channel">–</span>
+            </div>
+            <div class="actions" style="margin-top: 14px;">
+                <button class="btn btn-success" onclick="monitorEnable()" data-i18n="monitor.enable">Enable monitor</button>
+                <button class="btn btn-danger" onclick="monitorDisable()" data-i18n="monitor.disable">Back to managed</button>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <h2 data-i18n="card.channelpicker">Channel selection</h2>
+            <div class="form-group">
+                <label data-i18n="monitor.channelpick">Channel</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="mon-channel-select" style="flex: 1;">
+                        <option value="">--</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="monitorSetChannel()" data-i18n="btn.apply">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <h2><span data-i18n="card.capture">Frame capture</span>
+                <span id="capture-stats" style="float: right; font-size: 0.85rem; color: var(--text-dim); font-weight: normal;"></span>
+            </h2>
+            <div class="actions">
+                <button class="btn btn-success" onclick="captureStart()" id="btn-capture-start" data-i18n="btn.capture_start">Start capture</button>
+                <button class="btn btn-danger" onclick="captureStop()" id="btn-capture-stop" data-i18n="btn.capture_stop" disabled>Stop capture</button>
+                <button class="btn btn-outline" onclick="downloadPcap()" id="btn-pcap" data-i18n="btn.pcap" disabled>Download .pcap</button>
+            </div>
+            <div class="form-group" style="margin-top: 14px;">
+                <input type="text" id="frame-filter" data-i18n-placeholder="ph.framefilter" placeholder="Filter (e.g. Beacon, Probe)" oninput="renderFrames()">
+            </div>
+            <div style="max-height: 480px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th data-i18n="frame.time">Time</th>
+                            <th data-i18n="frame.type">Type</th>
+                            <th data-i18n="frame.src">Source</th>
+                            <th data-i18n="frame.dst">Dest</th>
+                            <th data-i18n="frame.ssid">SSID</th>
+                            <th data-i18n="frame.rssi">RSSI</th>
+                        </tr>
+                    </thead>
+                    <tbody id="frame-list">
+                        <tr><td colspan="6" data-i18n="frame.empty">Start a capture to see frames here.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div id="tab-settings" class="tab-content">
+        <div class="grid">
+            <div class="card">
+                <h2 data-i18n="card.iface">Interface Settings</h2>
+                <div class="form-group">
+                    <label>MTU</label>
+                    <input type="number" id="set-mtu" value="1500" min="576" max="9000">
+                </div>
+                <div class="form-group">
+                    <label data-i18n="label.txpower">TX Power (dBm)</label>
+                    <input type="number" id="set-txpower" value="20" min="0" max="30">
+                </div>
+                <div class="form-group">
+                    <label data-i18n="label.powersave">Power Save</label>
+                    <select id="set-powersave">
+                        <option value="0" data-i18n="opt.off">Off</option>
+                        <option value="1" data-i18n="opt.on">On</option>
+                    </select>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-primary" onclick="applySettings()" data-i18n="btn.apply">Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tests Tab -->
+    <div id="tab-tests" class="tab-content">
+        <div class="card">
+            <h2><span data-i18n="card.tests">Driver Test Suite</span>
+                <button class="btn btn-primary btn-sm" onclick="runTests()" style="float:right;" id="btn-run-tests" data-i18n="btn.runtests">
+                    Run tests
+                </button>
+            </h2>
+            <div id="test-summary" style="margin: 16px 0; color: #94a3b8;"></div>
+            <div id="test-output" data-i18n="tests.click">Click "Run tests" to start the suite...</div>
+        </div>
+    </div>
+
+    <!-- Advanced Tab -->
+    <div id="tab-advanced" class="tab-content">
+        <div class="adv-container">
+            <div class="adv-sidebar">
+                <div id="adv-categories"></div>
+                <div id="adv-proplist" class="adv-props"></div>
+            </div>
+            <div class="adv-main">
+                <div id="adv-editor" class="adv-empty" data-i18n="adv.pickcat">Select a category and property to configure.</div>
+            </div>
+        </div>
+        <div class="adv-actions">
+            <button class="btn btn-primary" onclick="saveAdvanced()" data-i18n="btn.saveapply">Save &amp; Apply</button>
+            <button class="btn btn-outline" onclick="resetAdvanced()" data-i18n="btn.resetdefault">Reset to default</button>
+            <button class="btn btn-warning" onclick="reloadModule()" data-i18n="btn.reloadmod">Reload module</button>
+        </div>
+        <div id="adv-pending-banner" class="adv-pending-banner" style="display:none;"></div>
+    </div>
+</div>
+
+<footer class="footer">
+    <div class="footer-by">
+        <span data-i18n="footer.by">by</span>
+        <a href="https://github.com/WimLee115" target="_blank" rel="noopener noreferrer">WimLee115</a>
+        <span data-i18n="footer.and">&amp; the Linux community</span>
+    </div>
+</footer>
+
+<div id="toast" class="toast" style="opacity: 0;"></div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
