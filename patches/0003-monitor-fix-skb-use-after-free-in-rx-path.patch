@@ -1,0 +1,166 @@
+From 7641d16b6a4d334516a73e5a8416385ad0427c98 Mon Sep 17 00:00:00 2001
+From: WimLee115 <wimlee@>
+Date: Mon, 16 Feb 2026 15:22:56 +0100
+Subject: Fix monitor mode hard freeze: SKB use-after-free in RX path
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+After recv_frame_monitor() delivered the SKB to the kernel via
+rtw_netif_rx(), the PHL RX buffer recycling (phl_release_rxbuf_usb)
+zeroed/reused the underlying buffer while the kernel still held a
+reference — causing a hard system freeze on packet capture.
+
+Fix: use skb_copy_expand() to create an independent SKB copy with
+64 bytes headroom before delivering to the kernel. The original SKB
+stays with the recv_frame for normal driver buffer recycling.
+
+Also fix uninitialized adapter pointer in rtw_core_update_recvframe()
+error path by moving initialization before potential goto exit, and
+add NULL guard at exit label.
+
+diff --git a/README.md b/README.md
+index 9ccf5a1..1f326c2 100644
+--- a/README.md
++++ b/README.md
+@@ -19,7 +19,7 @@
+ 
+ The original [lwfinger/rtl8852au](https://github.com/lwfinger/rtl8852au) driver (v1.15.0.1) **does not compile** on Linux kernel 6.18 and newer. The kernel introduced multiple breaking API changes — renamed functions, removed macros, changed subsystem signatures, and deprecated build flags — causing the build to fail with dozens of errors.
+ 
+-Even after resolving compilation errors, kernel 6.18 introduced **`-fstrict-flex-arrays=3`** and **`-fsanitize=bounds-strict`** which exposed latent bugs in the original driver: UBSAN array-out-of-bounds errors on every WPA key operation, and a NULL pointer dereference in the monitor mode receive path that could trigger a kernel panic.
++Even after resolving compilation errors, kernel 6.18 introduced **`-fstrict-flex-arrays=3`** and **`-fsanitize=bounds-strict`** which exposed latent bugs in the original driver: UBSAN array-out-of-bounds errors on every WPA key operation, a NULL pointer dereference in the monitor mode receive path, and a SKB buffer lifecycle bug in the monitor mode RX path that caused hard system freezes when capturing packets.
+ 
+ No upstream fix exists. This fork applies **10 targeted patches** developed by [WimLee115](https://github.com/WimLee115) that restore full compilation and functionality on kernel 6.18+ without altering driver behavior.
+ 
+@@ -50,6 +50,7 @@ No upstream fix exists. This fork applies **10 targeted patches** developed by [
+ |---|-------|-------|---------|
+ | 8 | **UBSAN array-out-of-bounds** | `include/ieee80211.h` | Kernel 6.18 compiles with `-fstrict-flex-arrays=3`, which no longer treats `u8 field[0]` (GNU zero-length arrays) as flexible array members. This caused UBSAN to flag every WPA/WPA2 key operation as an out-of-bounds access (`param->u.crypt.key[16]`, `key[24]`) — the TKIP MIC key offsets inside the crypt struct. Fixed by converting all zero-length arrays (`u8 key[0]`, `u8 data[0]`, `u8 buf[0]`) to proper C99 flexible array members (`u8 key[]`). |
+ | 9 | **NULL pointer dereference in monitor mode** | `core/rtw_recv.c` | `recv_frame_monitor()` dereferenced `rframe->u.hdr.pkt` (the skb pointer) without a NULL check. When a frame arrived via an error path in `rtw_core_update_recvframe()` (e.g. allocation failure), the NULL skb triggered a kernel panic. Added a NULL guard before the dereference. |
++| 10 | **SKB use-after-free in monitor mode RX** | `core/rtw_recv.c` | Hard system freeze when capturing packets in monitor mode. After `recv_frame_monitor()` delivered the SKB to the kernel via `rtw_netif_rx()`, the driver's PHL RX buffer recycling (`phl_release_rxbuf_usb`) zeroed and reused the underlying buffer while the kernel still held a reference to the SKB pointing to it. Fixed by using `skb_copy_expand()` to create an independent SKB copy with 64 bytes headroom (for the radiotap header) before kernel delivery. Also moved `prframe->u.hdr.adapter` initialization earlier in `rtw_core_update_recvframe()` to prevent NULL dereference on error paths, and added a NULL guard at the exit label. |
+ 
+ ### Ethtool fix
+ 
+@@ -318,7 +319,7 @@ This driver exists thanks to the work of:
+ 
+ - **[morrownr](https://github.com/morrownr)** — Community driver documentation, maintenance patterns, and USB ID references that served as valuable upstream reference material.
+ 
+-- **[WimLee115](https://github.com/WimLee115)** — Kernel 6.18+ compatibility patches. Developed, tested, and maintains the 9 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
++- **[WimLee115](https://github.com/WimLee115)** — Kernel 6.18+ compatibility patches. Developed, tested, and maintains the 10 targeted patches that make this driver compile and function on modern Linux kernels where the upstream source fails to build.
+ 
+ ---
+ 
+diff --git a/core/rtw_recv.c b/core/rtw_recv.c
+index 1486cb4..4e3c8a4 100755
+--- a/core/rtw_recv.c
++++ b/core/rtw_recv.c
+@@ -3700,10 +3700,16 @@ static int recv_frame_monitor(_adapter *padapter, union recv_frame *rframe, stru
+ #ifdef CONFIG_WIFI_MONITOR
+ 	struct net_device *ndev = padapter->pnetdev;
+ 	struct sk_buff *pskb = NULL;
++	struct sk_buff *pskb_copy = NULL;
+ 
+ 	if (rframe == NULL)
+ 		goto exit;
+ 
++	if (ndev == NULL) {
++		ret = _FAIL;
++		goto exit;
++	}
++
+ 	/* read skb information from recv frame */
+ 	pskb = rframe->u.hdr.pkt;
+ 	if (pskb == NULL)
+@@ -3712,27 +3718,47 @@ static int recv_frame_monitor(_adapter *padapter, union recv_frame *rframe, stru
+ 	pskb->data = rframe->u.hdr.rx_data;
+ 	skb_set_tail_pointer(pskb, rframe->u.hdr.len);
+ 
++	/*
++	 * Create an independent copy with enough headroom for the radiotap
++	 * header. This decouples the delivered packet from the driver's
++	 * internal buffer recycling (phl_release_rxbuf_usb zeroes/reuses the
++	 * underlying buffer after rtw_phl_return_rxbuf). Without the copy,
++	 * the kernel would hold an skb whose data buffer gets recycled.
++	 */
++	pskb_copy = skb_copy_expand(pskb, 64, 0, GFP_ATOMIC);
++	if (pskb_copy == NULL) {
++		ret = _FAIL;
++		goto exit;
++	}
++
+ 	if (ndev->type == ARPHRD_IEEE80211_RADIOTAP) {
+-		/* fill radiotap header */
+-		if (rtw_fill_radiotap_hdr(padapter, &rframe->u.hdr.attrib, rx_req, (u8 *)pskb) == _FAIL) {
++		/* fill radiotap header on the copy */
++		if (rtw_fill_radiotap_hdr(padapter, &rframe->u.hdr.attrib, rx_req, (u8 *)pskb_copy) == _FAIL) {
++			rtw_skb_free(pskb_copy);
+ 			ret = _FAIL;
+ 			goto exit;
+ 		}
+ 	}
+ 
+-	/* write skb information to recv frame */
+-	skb_reset_mac_header(pskb);
+-	rframe->u.hdr.len = pskb->len;
+-	rframe->u.hdr.rx_data = pskb->data;
+-	rframe->u.hdr.rx_head = pskb->head;
+-	rframe->u.hdr.rx_tail = skb_tail_pointer(pskb);
+-	rframe->u.hdr.rx_end = skb_end_pointer(pskb);
++	skb_reset_mac_header(pskb_copy);
++	pskb_copy->ip_summed = CHECKSUM_NONE;
++	pskb_copy->pkt_type = PACKET_OTHERHOST;
++	pskb_copy->protocol = htons(0x0019); /* ETH_P_80211_RAW */
+ 
+ 	if (!RTW_CANNOT_RUN(adapter_to_dvobj(padapter))) {
+-		/* indicate this recv_frame */
+-		ret = rtw_recv_monitor(padapter, rframe);
+-	} else
++		/* deliver the independent copy to the kernel */
++		rtw_netif_rx(ndev, pskb_copy);
++	} else {
++		rtw_skb_free(pskb_copy);
+ 		ret = _FAIL;
++	}
++
++	/*
++	 * Do NOT null rframe->u.hdr.pkt here. The original skb stays with
++	 * the recv_frame and will be freed normally by rtw_os_free_recvframe()
++	 * when rtw_free_recvframe() runs at rx_next. The PHL rx buffer is
++	 * safely recycled because no kernel reference to it remains.
++	 */
+ 
+ exit:
+ #endif /* CONFIG_WIFI_MONITOR */
+@@ -5291,6 +5317,9 @@ static s32 rtw_core_update_recvframe(struct dvobj_priv *dvobj,
+ 	if (rx_req->mdata.bc || rx_req->mdata.mc)
+ 		is_bmc = _TRUE;
+ 
++	/* Set adapter early so it is valid on all error paths (goto exit) */
++	prframe->u.hdr.adapter = primary_padapter;
++
+ 	//pre_recv_entry
+ 	//rtw_get_iface_by_macddr
+ 	if (rx_req->os_priv) {
+@@ -5309,7 +5338,7 @@ static s32 rtw_core_update_recvframe(struct dvobj_priv *dvobj,
+ 	core_update_recvframe_phyinfo(prframe, rx_req);
+ 	#endif
+ 
+-	prframe->u.hdr.adapter = primary_padapter;
++	/* adapter already set above, before the alloc path */
+ 	prframe->u.hdr.pkt->dev = primary_padapter->pnetdev;
+ 
+ 	if (!is_bmc) {
+@@ -5357,6 +5386,11 @@ static s32 rtw_core_update_recvframe(struct dvobj_priv *dvobj,
+ exit:
+ 	prframe->u.hdr.rx_req = rx_req;
+ 
++	if (prframe->u.hdr.adapter == NULL) {
++		rx_state = CORE_RX_FAIL;
++		return rx_state;
++	}
++
+ 	pmlmepriv = &(prframe->u.hdr.adapter)->mlmepriv;
+ 	if (check_fwstate(pmlmepriv, WIFI_MONITOR_STATE)) {
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24))
+-- 
+2.53.0
+

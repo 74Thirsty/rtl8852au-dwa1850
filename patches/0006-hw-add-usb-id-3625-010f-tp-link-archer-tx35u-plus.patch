@@ -1,0 +1,34 @@
+From df9c5ef39d705cbf4d0a0e8e67143ec9a90fbee1 Mon Sep 17 00:00:00 2001
+From: Joan Sala <jsiwrk@gmail.com>
+Date: Sat, 4 Apr 2026 14:05:53 +0200
+Subject: Add USB ID 3625:010f for TP-Link Archer TX35U Plus
+
+Confirmed working with RTL8852AU driver on Linux 6.8.
+
+diff --git a/README.md b/README.md
+index 2ae2a9f..bbfeb6a 100644
+--- a/README.md
++++ b/README.md
+@@ -251,6 +251,7 @@ This driver supports USB adapters based on the **RTL8852AU** and **RTL8832AU** c
+ | `0e8d:0608` | MediaTek-branded RTL8852AU | RTL8852AU | Yes |
+ | `2357:012e` | TP-Link Archer TX20U Nano | RTL8852AU | Yes |
+ | `2357:012f` | TP-Link Archer TX20U Plus | RTL8852AU | Yes |
++| `3625:010f` | TP-Link Archer TX35U Plus | RTL8852AU | Yes |
+ | `0b05:1a62` | ASUS USB-AX56 (No Cradle) | RTL8832AU | Yes |
+ | `13b1:0465` | Linksys WUSB6400M v2 | RTL8852AU | Reported |
+ | `0846:9060` | NETGEAR A8000 | RTL8852AU | Reported |
+diff --git a/os_dep/linux/usb_intf.c b/os_dep/linux/usb_intf.c
+index cc6e8b4..86a71f2 100755
+--- a/os_dep/linux/usb_intf.c
++++ b/os_dep/linux/usb_intf.c
+@@ -163,6 +163,7 @@ static struct usb_device_id rtw_usb_id_tbl[] = {
+ 
+         /*=== TP-Link AX1800 ===*/
+ 	{USB_DEVICE_AND_INTERFACE_INFO(0x35bc, 0x0100, 0xff, 0xff, 0xff), .driver_info = RTL8852A},
++	{USB_DEVICE_AND_INTERFACE_INFO(0x3625, 0x010f, 0xff, 0xff, 0xff), .driver_info = RTL8852A}, /* TP-Link Archer TX35U Plus */
+ 	{USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_TPLINK, 0x013f, 0xff, 0xff, 0xff), .driver_info = RTL8852A},
+ 	{USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_TPLINK, 0x0140, 0xff, 0xff, 0xff), .driver_info = RTL8852A},
+ 	{USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_TPLINK, 0x0141, 0xff, 0xff, 0xff), .driver_info = RTL8852A},
+-- 
+2.53.0
+

@@ -1,0 +1,93 @@
+From 6c6443a93ef15a0db98dcabf3ded253d1dab5625 Mon Sep 17 00:00:00 2001
+From: WimLee115 <221691756+WimLee115@users.noreply.github.com>
+Date: Mon, 11 May 2026 08:33:37 +0200
+Subject: [PATCH] os: serialise netdev_close with hw_init_mutex and skip on
+ remove
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+netdev_open() already takes hw_init_mutex; netdev_close() did not.
+A rapid `ip link up/down` cycle could race rtw_hw_iface_init against
+an in-flight rtw_hw_iface_deinit on the same adapter, producing a
+use-after-free of HAL state — observed as a hard kernel panic during
+TestStability.test_01_rapid_ifup_ifdown on kernel 6.19.
+
+In addition, rtw_disassoc_cmd(WAIT_ACK) and rtw_free_assoc_resources_cmd
+each block for up to 2 seconds. When rtw_dev_remove() is in progress or
+the USB device has been surprise-removed, every H2C times out and
+netdev_close keeps the cmd path alive while NetworkManager races against
+partially-torn-down state — observed as a panic during
+TestModuleReload.test_01_reload_module.
+
+Fix:
+ - Take hw_init_mutex symmetrically in netdev_close().
+ - Early return if netif_up is already _FALSE — prevents double deinit
+   on rapid toggle and on suspend/resume re-entry.
+ - On dev_is_surprise_removed() or processing_dev_remove, skip the
+   disassoc / scan-abort cmd path and jump straight to rtw_hw_iface_deinit.
+
+The mutex is already initialised in usb_dvobj_init() and freed in
+usb_dvobj_deinit(), so no allocation changes are required.
+
+diff --git a/os_dep/linux/os_intfs.c b/os_dep/linux/os_intfs.c
+index f0520ad..d24c64e 100755
+--- a/os_dep/linux/os_intfs.c
++++ b/os_dep/linux/os_intfs.c
+@@ -2414,11 +2414,38 @@ static int netdev_close(struct net_device *pnetdev)
+ 	struct mlme_priv	*pmlmepriv = &padapter->mlmepriv;
+ 	struct dvobj_priv *dvobj = adapter_to_dvobj(padapter);
+ 
++	/* Serialise against netdev_open() — open already takes hw_init_mutex.
++	 * Without symmetric locking, a rapid `ip link up/down` cycle can race
++	 * hw_iface_init against an in-flight hw_iface_deinit on the same
++	 * adapter and panic the kernel with a use-after-free of HAL state.
++	 */
++	_rtw_mutex_lock(&dvobj->hw_init_mutex);
++
++	/* Already torn down — prevents double-deinit on rapid toggle and on
++	 * suspend/resume re-entry. */
++	if (padapter->netif_up == _FALSE) {
++		_rtw_mutex_unlock(&dvobj->hw_init_mutex);
++		return 0;
++	}
++
+ 	RTW_INFO(FUNC_NDEV_FMT" , netif_up=%d\n", FUNC_NDEV_ARG(pnetdev), padapter->netif_up);
+ 
+ 
+ 	pmlmepriv->LinkDetectInfo.bBusyTraffic = _FALSE;
+ 
++	/* If the USB device is gone or rtw_dev_remove() is running, every
++	 * H2C cmd will time out and rtw_disassoc_cmd(WAIT_ACK) blocks the
++	 * close path for 2 s × N cmds. That is the exact window in which
++	 * rmmod-while-associated has been observed to panic the kernel.
++	 * Skip the disassoc/scan-abort path and go straight to deinit. */
++	if (dev_is_surprise_removed(dvobj) || dvobj->processing_dev_remove) {
++		RTW_INFO(FUNC_NDEV_FMT" sr=%d pdr=%d — skipping disassoc cmds\n",
++			 FUNC_NDEV_ARG(pnetdev),
++			 dev_is_surprise_removed(dvobj),
++			 dvobj->processing_dev_remove);
++		goto deinit;
++	}
++
+ 	if (pwrctl->rf_pwrstate == rf_on) {
+ 		RTW_INFO("netif_up=%d, hw_init_completed=%s\n",
+ 			padapter->netif_up,
+@@ -2472,11 +2499,14 @@ static int netdev_close(struct net_device *pnetdev)
+ #ifdef CONFIG_WAPI_SUPPORT
+ 	rtw_wapi_disable_tx(padapter);
+ #endif
++
++deinit:
+ 	rtw_hw_iface_deinit(padapter);
+ 	padapter->netif_up = _FALSE;
+ 
+ 	RTW_INFO("-871x_drv - drv_close, netif_up=%d\n", padapter->netif_up);
+ 
++	_rtw_mutex_unlock(&dvobj->hw_init_mutex);
+ 	return 0;
+ 
+ }
+-- 
+2.53.0
+

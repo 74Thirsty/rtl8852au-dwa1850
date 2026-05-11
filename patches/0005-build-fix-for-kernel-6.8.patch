@@ -1,0 +1,91 @@
+From 673459ba4284f2a1f86f177adb8110991b4b4432 Mon Sep 17 00:00:00 2001
+From: Joan Sala <jsiwrk@gmail.com>
+Date: Sat, 4 Apr 2026 14:54:51 +0200
+Subject: Fix build on kernel 6.8
+
+- ioctl_cfg80211.c: wrap cfg80211 MLO API changes (radio_idx, link_id,
+  net_device * in set_monitor_channel) in LINUX_VERSION_CODE >= 6.18.0
+  guards; kernel 6.8 uses the pre-MLO signatures
+- hal_ser.h: add missing prototypes for rtw_hal_ser_get_error_status
+  and rtw_hal_ser_set_error_status to silence -Wmissing-prototypes
+
+diff --git a/os_dep/linux/ioctl_cfg80211.c b/os_dep/linux/ioctl_cfg80211.c
+index df75ca0..29d74f6 100755
+--- a/os_dep/linux/ioctl_cfg80211.c
++++ b/os_dep/linux/ioctl_cfg80211.c
+@@ -3436,7 +3436,11 @@ static void cfg80211_rtw_abort_scan(struct wiphy *wiphy,
+ }
+ #endif /* LINUX_VERSION_CODE >= 4.5.0 */
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+ static int cfg80211_rtw_set_wiphy_params(struct wiphy *wiphy, int radio_idx, u32 changed)
++#else
++static int cfg80211_rtw_set_wiphy_params(struct wiphy *wiphy, u32 changed)
++#endif
+ {
+ #if 0
+ 	struct iwm_priv *iwm = wiphy_to_iwm(wiphy);
+@@ -4411,10 +4415,16 @@ static int cfg80211_rtw_disconnect(struct wiphy *wiphy, struct net_device *ndev,
+ 	return 0;
+ }
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+ static int cfg80211_rtw_set_txpower(struct wiphy *wiphy,
+ 	struct wireless_dev *wdev,
+ 	int radio_idx,
+ 	enum nl80211_tx_power_setting type, int mbm)
++#else
++static int cfg80211_rtw_set_txpower(struct wiphy *wiphy,
++	struct wireless_dev *wdev,
++	enum nl80211_tx_power_setting type, int mbm)
++#endif
+ {
+ #if 0
+ 	struct iwm_priv *iwm = wiphy_to_iwm(wiphy);
+@@ -4446,10 +4456,16 @@ static int cfg80211_rtw_set_txpower(struct wiphy *wiphy,
+ 	return 0;
+ }
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+ static int cfg80211_rtw_get_txpower(struct wiphy *wiphy,
+ 	struct wireless_dev *wdev,
+ 	int radio_idx, unsigned int link_id,
+ 	int *dbm)
++#else
++static int cfg80211_rtw_get_txpower(struct wiphy *wiphy,
++	struct wireless_dev *wdev,
++	int *dbm)
++#endif
+ {
+ 	RTW_INFO("%s\n", __func__);
+ 
+@@ -6342,9 +6358,14 @@ static void rtw_get_chbwoff_from_cfg80211_chan_def(
+ }
+ #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) */
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+ static int cfg80211_rtw_set_monitor_channel(struct wiphy *wiphy,
+ 	struct net_device *dev,
+ 	struct cfg80211_chan_def *chandef)
++#else
++static int cfg80211_rtw_set_monitor_channel(struct wiphy *wiphy,
++	struct cfg80211_chan_def *chandef)
++#endif
+ {
+ 	_adapter *padapter = wiphy_to_adapter(wiphy);
+ 	u8 target_channal, target_offset, target_width, ht_option;
+diff --git a/phl/hal_g6/hal_ser.h b/phl/hal_g6/hal_ser.h
+index 3e16703..4762bd2 100644
+--- a/phl/hal_g6/hal_ser.h
++++ b/phl/hal_g6/hal_ser.h
+@@ -15,4 +15,7 @@
+ #ifndef _HAL_SER_H_
+ #define _HAL_SER_H_
+ 
++u32 rtw_hal_ser_get_error_status(void *hal, u32 *err);
++enum rtw_hal_status rtw_hal_ser_set_error_status(void *hal, u32 err);
++
+ #endif /* _HAL_SER_H_ */
+-- 
+2.53.0
+
