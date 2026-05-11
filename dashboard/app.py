@@ -2490,6 +2490,17 @@ if __name__ == "__main__":
              "Pass 0.0.0.0 to expose to the LAN — the auth token is then "
              "the only thing preventing remote root operations.",
     )
+    parser.add_argument(
+        "--dev", action="store_true",
+        help="Use Werkzeug's development server (auto-reload, better "
+             "tracebacks). Default: serve via waitress, a production-grade "
+             "WSGI server with no startup warning.",
+    )
+    parser.add_argument(
+        "--threads", type=int, default=8,
+        help="Number of worker threads for the production server "
+             "(ignored with --dev). Default: 8.",
+    )
     args = parser.parse_args()
 
     if os.geteuid() != 0:
@@ -2520,4 +2531,19 @@ if __name__ == "__main__":
     print( " Login              :  any username, password = the token above")
     print()
 
-    app.run(host=args.host, port=args.port, debug=False)
+    if args.dev:
+        # Werkzeug dev server — auto-reload, friendlier tracebacks, but
+        # prints a noisy "do not use in production" banner.
+        app.run(host=args.host, port=args.port, debug=False)
+    else:
+        # Production path: waitress. No banner, real WSGI server, handles
+        # the long-lived /api/stream connections without surprises.
+        try:
+            from waitress import serve
+        except ImportError:
+            print("ERROR: waitress is not installed. Run "
+                  "`pip install --require-hashes -r dashboard/requirements.txt`,",
+                  "or start with --dev to fall back to the development server.")
+            raise SystemExit(1)
+        serve(app, host=args.host, port=args.port, threads=args.threads,
+              ident="rtl8852au-dashboard")
