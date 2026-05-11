@@ -777,11 +777,23 @@ DASHBOARD_HTML = """
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
        background: var(--bg-base); color: var(--text); min-height: 100vh; }
-.header { background: var(--header-gradient);
-           padding: 20px 30px; border-bottom: 1px solid var(--border-strong); display: flex;
-           justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-.header h1 { font-size: 1.5rem; color: var(--accent); }
+.header { background: var(--header-gradient); position: relative;
+           padding: 20px 30px; border-bottom: 1px solid var(--border-strong);
+           text-align: center; }
+.header-title { display: inline-block; }
+.header h1 { font-size: 1.5rem; color: var(--accent); line-height: 1.2; }
+.header-link { display: block; margin-top: 4px; color: var(--text-muted);
+               font-size: 0.85rem; text-decoration: none; font-family: monospace; }
+.header-link:hover { color: var(--accent); text-decoration: underline; }
+.header-controls { position: absolute; right: 30px; top: 50%; transform: translateY(-50%);
+                   display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .header .status-badge { padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+.footer { text-align: center; padding: 30px 20px 24px;
+          color: var(--text-dim); font-size: 0.85rem;
+          border-top: 1px solid var(--border); margin-top: 40px; }
+.footer a { color: var(--accent); text-decoration: none; }
+.footer a:hover { text-decoration: underline; }
+.footer .footer-by { letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.75rem; }
 .badge-ok { background: var(--ok-bg); color: var(--ok-fg); }
 .badge-err { background: var(--err-bg); color: var(--err-fg); }
 .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
@@ -856,15 +868,21 @@ table tr:hover td { background: var(--tr-hover); }
 .kbd { display: inline-block; background: var(--bg-input); border: 1px solid var(--border-strong); border-radius: 4px;
        padding: 1px 6px; font-family: monospace; font-size: 0.8rem; color: var(--text); }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .adv-container { flex-direction: column; } .adv-sidebar { width: 100%; } }
+@media (max-width: 900px) {
+    .header { padding-bottom: 70px; }
+    .header-controls { position: static; transform: none; justify-content: center; margin-top: 14px; }
+}
 @media (max-width: 600px) {
-    .header { padding: 14px 16px; }
+    .header { padding: 14px 16px 70px; }
     .header h1 { font-size: 1.15rem; }
+    .header-link { font-size: 0.75rem; }
     .container { padding: 12px; }
     .card { padding: 14px; }
     .tab { padding: 8px 12px; font-size: 0.85rem; }
     .stat-grid { grid-template-columns: 1fr 1fr; }
     .trend-row { grid-template-columns: 1fr; gap: 4px; }
     .trend-value { text-align: left; }
+    .footer { padding: 20px 14px 18px; }
 }
 /* Advanced tab - Windows Device Manager style */
 .adv-container { display: flex; gap: 16px; min-height: 520px; }
@@ -911,8 +929,13 @@ table tr:hover td { background: var(--tr-hover); }
 <body>
 
 <div class="header">
-    <h1>RTL8852AU WiFi Dashboard</h1>
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <div class="header-title">
+        <h1>RTL8852AU WiFi Dashboard</h1>
+        <a class="header-link"
+           href="https://github.com/WimLee115/rtl8852au-build"
+           target="_blank" rel="noopener noreferrer">github.com/WimLee115/rtl8852au-build</a>
+    </div>
+    <div class="header-controls">
         <div class="lang-switch">
             <button class="lang-btn" data-theme-btn="dark" onclick="setTheme('dark')" title="Dark mode">●</button>
             <button class="lang-btn" data-theme-btn="light" onclick="setTheme('light')" title="Light mode">○</button>
@@ -1081,6 +1104,14 @@ table tr:hover td { background: var(--tr-hover); }
     </div>
 </div>
 
+<footer class="footer">
+    <div class="footer-by">
+        <span data-i18n="footer.by">by</span>
+        <a href="https://github.com/WimLee115" target="_blank" rel="noopener noreferrer">WimLee115</a>
+        <span data-i18n="footer.and">&amp; the Linux community</span>
+    </div>
+</footer>
+
 <div id="toast" class="toast" style="opacity: 0;"></div>
 
 <script>
@@ -1195,6 +1226,8 @@ const I18N = {
         'kbd.tab5': 'Advanced tab', 'kbd.scan': 'Scan networks',
         'kbd.refresh': 'Refresh status', 'kbd.theme': 'Toggle theme',
         'kbd.lang': 'Toggle language', 'kbd.help': 'Show this help',
+        'footer.by': 'by',
+        'footer.and': '& the Linux community',
     },
     nl: {
         'status.loading': 'Laden...',
@@ -1305,6 +1338,8 @@ const I18N = {
         'kbd.tab5': 'Geavanceerd-tab', 'kbd.scan': 'Netwerken scannen',
         'kbd.refresh': 'Status verversen', 'kbd.theme': 'Thema wisselen',
         'kbd.lang': 'Taal wisselen', 'kbd.help': 'Deze help tonen',
+        'footer.by': 'door',
+        'footer.and': '& de Linux-community',
     }
 };
 
