@@ -6,7 +6,7 @@ If you find a security issue in this driver, the dashboard, or the helper
 scripts, please **do not** open a public issue. Email the maintainer
 directly:
 
-**ai-idle@outlook.com**
+**almass-only@protonmail.com**
 
 Include:
 

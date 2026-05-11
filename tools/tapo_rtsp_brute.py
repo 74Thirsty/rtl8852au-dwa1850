@@ -1,8 +1,23 @@
 #!/usr/bin/env python3
 """
-Tapo Camera RTSP Credential Finder — CTF Tool
+Tapo Camera RTSP Credential Finder — CTF / authorised-testing tool.
+
 Multi-threaded RTSP Digest brute-force + Tapo KLAP protocol bypass.
+
 Usage: python3 tools/tapo_rtsp_brute.py [camera_ip] [wordlist]
+
+AUTHORISED TESTING ONLY. Running this against devices you do not own
+or do not have written permission to test is a criminal offence in
+most jurisdictions:
+
+    - Netherlands :  Sr art. 138ab (computervredebreuk)
+    - EU          :  Directive 2013/40/EU (attacks on information systems)
+    - USA         :  18 USC 1030 (Computer Fraud and Abuse Act)
+    - UK          :  Computer Misuse Act 1990
+
+The maintainer accepts no responsibility for misuse. By running this
+script you confirm that the target device is your own, or that you
+have explicit written authorisation from its owner.
 """
 
 import socket, sys, base64, time, subprocess, hashlib, re, os
@@ -142,13 +157,49 @@ def load_passwords():
     return passwords
 
 
+def _abort_unless_authorised():
+    """Print a legal-use banner and require an explicit ack before continuing.
+
+    Set RTW_TAPO_AUTHORISED=1 in the environment to skip the prompt for
+    automated runs (e.g. CTF scripts where the target is your own
+    challenge container). Without the env-var the script waits 5
+    seconds; Ctrl+C aborts.
+    """
+    if os.environ.get("RTW_TAPO_AUTHORISED") == "1":
+        return
+    print(f"""{C.Y}{C.B}
+  +------------------------------------------------------------+
+  |  AUTHORISED TESTING ONLY                                   |
+  |                                                            |
+  |  By running this tool you confirm that the target device   |
+  |  is yours or that you have explicit written permission to  |
+  |  test it. Unauthorised use is a criminal offence under:    |
+  |                                                            |
+  |    - NL  : Sr art. 138ab    (computervredebreuk)           |
+  |    - EU  : Dir. 2013/40/EU  (attacks on info systems)      |
+  |    - US  : 18 USC 1030      (CFAA)                         |
+  |    - UK  : Computer Misuse Act 1990                        |
+  |                                                            |
+  |  The maintainer accepts no responsibility for misuse.      |
+  |  Press Ctrl+C now to abort. Continuing in 5 seconds...     |
+  +------------------------------------------------------------+{C.X}
+""")
+    try:
+        time.sleep(5)
+    except KeyboardInterrupt:
+        print(f"\n{C.R}[!] aborted by user{C.X}")
+        sys.exit(0)
+
+
 def main():
+    _abort_unless_authorised()
+
     print(f"""{C.C}{C.B}
-  ╔══════════════════════════════════════════════╗
-  ║  Tapo RTSP Brute-Force (CTF)                ║
-  ║  Target : {TARGET:>20s}:{RTSP_PORT:<5d}      ║
-  ║  Threads: {THREADS:<3d}                              ║
-  ╚══════════════════════════════════════════════╝{C.X}
+  +----------------------------------------------+
+  |  Tapo RTSP Brute-Force (authorised testing)  |
+  |  Target : {TARGET:>20s}:{RTSP_PORT:<5d}      |
+  |  Threads: {THREADS:<3d}                              |
+  +----------------------------------------------+{C.X}
 """)
 
     # Connectivity check

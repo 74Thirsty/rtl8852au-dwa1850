@@ -363,6 +363,26 @@ driver-source patches. In short:
 - **[WimLee115](https://github.com/WimLee115)** — fork maintenance,
   kernel-compatibility patches, test suite, dashboard.
 
+## Disclaimer
+
+This is an **independent community fork**. It is not affiliated with,
+endorsed by, or sponsored by **Realtek Semiconductor Corp.**, **TP-Link
+Technologies**, **ASUSTeK Computer Inc.**, **D-Link Corporation**,
+**Buffalo Inc.**, **Elecom Co., Ltd.**, or any other hardware vendor
+named in this repository. Product names and USB IDs are listed for
+identification purposes only.
+
+The firmware blob in
+[`phl/hal_g6/mac/fw_ax/rtl8852a/hal8852a_fw.c.xz`](phl/hal_g6/mac/fw_ax/rtl8852a/hal8852a_fw.c.xz)
+is © Realtek Semiconductor Corp. and is redistributed **unchanged**
+from the Realtek `v1.15.0.1-2` vendor source bundle. Its SHA-256 is
+recorded in [`CHECKSUMS.sha256`](CHECKSUMS.sha256) and verified by CI
+on every build.
+
+As with any out-of-tree kernel module, **the software is provided "AS
+IS" without warranty of any kind**, as stated in the
+[GPL-2.0 licence](LICENSE) under which it is distributed.
+
 ## License
 
 GNU General Public License v2.0 — see [`LICENSE`](LICENSE). The
