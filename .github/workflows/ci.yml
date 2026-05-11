@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
 
       - name: Install build dependencies
         run: |
@@ -43,6 +43,10 @@ jobs:
           make --version | head -1
           uname -a
           ls -la "/lib/modules/$(uname -r)/build" | head -3
+
+      - name: Verify firmware checksums
+        run: |
+          sha256sum -c CHECKSUMS.sha256
 
       - name: Build module
         run: |
@@ -61,7 +65,7 @@ jobs:
 
       - name: Upload artefacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
           name: build-${{ matrix.os }}
           path: |
@@ -77,7 +81,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
       - name: Install deps
         run: |
           sudo apt-get update
@@ -108,17 +112,20 @@ jobs:
     name: Python lint and offline tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c  # v6.0.0
         with:
           python-version: "3.12"
 
       - name: Install Python tools
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pyflakes flask
+          # Runtime deps for dashboard: hash-locked.
+          pip install --require-hashes -r dashboard/requirements.txt
+          # Dev tools (lint): pinned by major to keep CI hermetic.
+          pip install 'ruff~=0.14' 'pyflakes~=3.2'
 
       - name: Ruff (lint)
         run: |

@@ -1,0 +1,12 @@
+# Firmware blob checksums for rtl8852au-build
+#
+# Verify with:    sha256sum -c CHECKSUMS.sha256
+# Regenerate:     find phl -name "*.xz" -type f -exec sha256sum {} \; > CHECKSUMS.sha256
+#
+# These are the binary firmware blobs distributed alongside the driver
+# source. They originate from the upstream Realtek vendor release
+# (v1.15.0.1) and are unchanged in this fork — the SHA256 below should
+# never change in this repository without an accompanying commit message
+# that explains *why* (e.g. a firmware bump from Realtek).
+
+23780cd2136ff7174184926d193e1a99557d4060bbea9f4c28fb221c8137de15  phl/hal_g6/mac/fw_ax/rtl8852a/hal8852a_fw.c.xz
