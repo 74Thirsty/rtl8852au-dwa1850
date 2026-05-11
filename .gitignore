@@ -31,7 +31,8 @@ modules.builtin
 *.lzma
 *.xz
 *.lzo
-*.patch
+# .patch files at the top of the tree are temporary; tracked patches live in patches/
+/*.patch
 *.gcno
 
 #
@@ -56,6 +57,8 @@ modules.builtin
 #
 !.gitignore
 !.mailmap
+!.github
+!.github/**
 
 # Firmware: uncompressed version (generated from .xz at build time)
 phl/hal_g6/mac/fw_ax/rtl8852a/hal8852a_fw.c
@@ -72,8 +75,7 @@ arch/*/include/generated
 # stgit generated dirs
 patches-*
 
-# quilt's files
-patches
+# quilt's series file (patches/ directory itself is tracked — see patches/README.md)
 series
 
 # cscope files

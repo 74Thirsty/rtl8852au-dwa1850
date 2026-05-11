@@ -1,0 +1,82 @@
+name: Bug report
+description: Driver crashes, fails to load, or misbehaves on supported hardware.
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please fill in as much as you can — the more detail, the faster this gets fixed.
+
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel version
+      description: Output of `uname -r`
+      placeholder: "6.18.9-kali-amd64"
+    validations:
+      required: true
+
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution
+      description: Distro name and version
+      placeholder: "Kali Linux Rolling 2026.1"
+    validations:
+      required: true
+
+  - type: input
+    id: usb_id
+    attributes:
+      label: USB ID
+      description: Output of `lsusb | grep -i realtek` (or the relevant vendor)
+      placeholder: "2357:013f TP-Link 802.11ac WLAN Adapter"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Install method
+      options:
+        - "DKMS (sudo ./dkms-install.sh)"
+        - "make + make install"
+        - "Distro package"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happens
+    attributes:
+      label: What happens
+      description: Describe the problem. What did you do? What did you expect? What happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: dmesg
+    attributes:
+      label: dmesg output
+      description: Run `sudo dmesg | grep -iE "8852|rtl" | tail -50` and paste the result.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: build_log
+    attributes:
+      label: Build log (if build fails)
+      description: Output of `make 2>&1 | tail -50`
+      render: shell
+
+  - type: checkboxes
+    id: monitor_mode
+    attributes:
+      label: Does this happen in
+      options:
+        - label: Managed mode
+        - label: Monitor mode
+        - label: AP mode
+        - label: Build time only

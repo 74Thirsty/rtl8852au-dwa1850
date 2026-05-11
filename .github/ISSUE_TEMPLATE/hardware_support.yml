@@ -1,0 +1,48 @@
+name: Hardware support request
+description: Add support for a USB adapter that uses the RTL8852AU or RTL8832AU chipset.
+title: "[hw] "
+labels: ["hardware", "needs-triage"]
+body:
+  - type: input
+    id: device_name
+    attributes:
+      label: Device name
+      placeholder: "TP-Link Archer TX20U Plus"
+    validations:
+      required: true
+
+  - type: input
+    id: usb_id
+    attributes:
+      label: USB ID
+      description: Output of `lsusb` for this device
+      placeholder: "2357:013f"
+    validations:
+      required: true
+
+  - type: input
+    id: chipset
+    attributes:
+      label: Chipset
+      description: RTL8852AU or RTL8832AU — usually printed on the PCB, or in the FCC ID lookup
+      placeholder: "RTL8852AU"
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: |
+        Output of `lsusb -v -d <vendor:product>` (manufacturer + product strings) helps confirm
+        this is really an RTL8852AU. If you've tried loading the driver, paste the dmesg.
+      render: shell
+
+  - type: checkboxes
+    id: tested
+    attributes:
+      label: I have tested the driver against this device
+      options:
+        - label: "Yes — connection works"
+        - label: "Partially — driver loads but doesn't connect"
+        - label: "No — requesting support so I can test"

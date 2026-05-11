@@ -1,0 +1,34 @@
+# ruff configuration — kept intentionally narrow.
+#
+# We lint for real bugs (F = pyflakes-style: unused imports, undefined names,
+# unreachable code) and bug-prone bug categories. Style/format is left alone
+# so the existing codebase stays readable without a wholesale reformat.
+
+line-length = 120
+target-version = "py39"
+
+[lint]
+select = [
+    "F",      # pyflakes — undefined names, unused imports, etc.
+    "E9",     # syntax errors
+    "B",      # flake8-bugbear — likely bugs
+    "C90",    # mccabe complexity (only the worst offenders)
+]
+ignore = [
+    "B008",   # function call in default argument — Flask uses this pattern
+    "B904",   # raise from inside except — fine in many places
+    "E501",   # line too long — handled by line-length
+    "F401",   # unused import — many files re-export
+    "F841",   # unused variable — sometimes intentional in tests
+]
+
+[lint.per-file-ignores]
+"tools/tapo_rtsp_brute.py" = ["F", "E", "B", "C90"]  # CTF tool, intentionally terse
+"tests/__init__.py" = ["F401"]
+
+[lint.mccabe]
+max-complexity = 30  # high — the dashboard has some large request handlers
+
+[format]
+# Don't run the formatter automatically; existing style stays as is.
+exclude = ["*"]
