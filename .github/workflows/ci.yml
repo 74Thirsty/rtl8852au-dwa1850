@@ -75,6 +75,93 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # ── Build against current mainline kernels (kernel.org) ────────────────
+  # The distro-kernel matrix above only exercises the GitHub runner kernel
+  # (~6.8-6.11). This job builds against the newest kernel.org stable and
+  # longterm releases — resolved at run time, so it tracks 6.19 / 7.0 and
+  # beyond automatically — so post-6.18 API breakage is caught in CI rather
+  # than by users. Uses `modules_prepare` against a fetched source tree.
+  build-mainline:
+    name: Build (mainline ${{ matrix.channel }})
+    runs-on: ubuntu-24.04
+    # The newest stable often outpaces what an out-of-tree vendor driver
+    # supports (e.g. kernel 7.1 refactored many cfg80211_ops callbacks from
+    # net_device to wireless_dev). Treat stable as an informational early
+    # warning; keep longterm (LTS) as a hard signal.
+    continue-on-error: ${{ matrix.channel == 'stable' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [stable, longterm]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential bc bison flex libssl-dev libelf-dev xz-utils jq curl
+
+      - name: Resolve ${{ matrix.channel }} kernel version
+        id: kver
+        run: |
+          curl -fsSL https://www.kernel.org/releases.json -o releases.json
+          if [ "${{ matrix.channel }}" = "stable" ]; then
+            ver="$(jq -r '.latest_stable.version' releases.json)"
+          else
+            ver="$(jq -r '[.releases[] | select(.moniker == "longterm")][0].version' releases.json)"
+          fi
+          if [ -z "$ver" ] || [ "$ver" = "null" ]; then
+            echo "::error::could not resolve ${{ matrix.channel }} kernel version"; exit 1
+          fi
+          echo "Selected ${{ matrix.channel }} kernel: $ver"
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          echo "major=${ver%%.*}" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch and prepare kernel ${{ steps.kver.outputs.ver }}
+        run: |
+          ver="${{ steps.kver.outputs.ver }}"
+          major="${{ steps.kver.outputs.major }}"
+          curl -fsSL "https://cdn.kernel.org/pub/linux/kernel/v${major}.x/linux-${ver}.tar.xz" -o linux.tar.xz
+          tar xf linux.tar.xz
+          make -C "linux-${ver}" defconfig
+          # The vendored Realtek tree carries many benign code-style warnings
+          # (empty-body, etc.). A fresh defconfig builds modules with
+          # CONFIG_WERROR=y (distro headers do not), turning those into hard
+          # errors. Disable it so this job tests real buildability, not vendor
+          # code style. Genuine type breakage (e.g. 7.1's cfg80211
+          # incompatible-pointer-types) uses a separate unconditional -Werror
+          # and still fails correctly.
+          ./linux-${ver}/scripts/config --file "linux-${ver}/.config" --disable WERROR
+          make -C "linux-${ver}" olddefconfig
+          make -C "linux-${ver}" modules_prepare
+
+      - name: Build module against mainline ${{ steps.kver.outputs.ver }}
+        run: |
+          ver="${{ steps.kver.outputs.ver }}"
+          krel="$(make -s -C "linux-${ver}" kernelrelease)"
+          echo "kernelrelease = ${krel}"
+          sudo mkdir -p "/lib/modules/${krel}"
+          sudo ln -sfn "${PWD}/linux-${ver}" "/lib/modules/${krel}/build"
+          # KBUILD_MODPOST_WARN=1: we run modules_prepare, not a full kernel
+          # build, so the tree's Module.symvers is empty and modpost cannot
+          # resolve in-kernel symbols (memset, usb_alloc_urb, ...). Downgrade
+          # that to a warning — this is a compile/link test, and real
+          # source-level breakage is already caught in the compile phase
+          # before modpost runs.
+          make KVER="${krel}" KBUILD_MODPOST_WARN=1 -j"$(nproc)" 2>&1 | tee build-mainline.log
+          test -f 8852au.ko
+          modinfo ./8852au.ko | grep -E "vermagic|^version" || true
+
+      - name: Warning / error summary
+        run: |
+          warn="$(grep -cE 'warning:' build-mainline.log || true)"
+          err="$(grep -cE ': error:' build-mainline.log || true)"
+          echo "mainline ${{ steps.kver.outputs.ver }}: errors=${err} warnings=${warn}"
+          test "${err}" = "0"
+
   # ── DKMS install/remove dry-run (validates the helper scripts) ─────────
   dkms:
     name: DKMS scripts dry-run
